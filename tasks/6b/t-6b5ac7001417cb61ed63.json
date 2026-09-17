@@ -4,7 +4,7 @@
   "title": "Synchronize task state through custom remote refs",
   "type": "feature",
   "priority": "P2",
-  "status": "open",
+  "status": "in_progress",
   "resolution": null,
   "description": "User removed browser-only agent requirement. Keep local and GitHub task state at refs/agent-tasks/state; no ordinary task branch. Assess API Git database access and migrate only after live verification.",
   "acceptance": [
@@ -14,13 +14,16 @@
     "GitHub refs/commits/trees/blobs API reads canonical task JSON; validated migration preserves project and tasks before deleting legacy branch."
   ],
   "labels": [],
-  "claim": null,
+  "claim": {
+    "actor": "codex-main",
+    "claimed_at": "2026-09-17T04:10:57.151Z"
+  },
   "manual_block": null,
   "depends_on": [],
   "parent": null,
   "discovered_from": null,
   "notes": [],
   "created_at": "2026-09-17T04:10:56.844Z",
-  "updated_at": "2026-09-17T04:10:56.844Z",
+  "updated_at": "2026-09-17T04:10:57.151Z",
   "closed_at": null
 }

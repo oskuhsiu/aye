@@ -3,20 +3,20 @@
 ## Summary
 
 - total: 9
-- ready: 1
+- ready: 0
 - blocked: 0
-- in_progress: 0
+- in_progress: 1
 - deferred: 0
 - closed_done: 8
 - closed_cancelled: 0
 
 ## In Progress
 
-None.
+- t-6b5ac7001417cb61ed63 [P2] Synchronize task state through custom remote refs — claimed by codex\-main
 
 ## Ready
 
-- t-6b5ac7001417cb61ed63 [P2] Synchronize task state through custom remote refs
+None.
 
 ## Blocked
 

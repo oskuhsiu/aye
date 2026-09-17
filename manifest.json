@@ -4,10 +4,10 @@
     "closed_cancelled": 0,
     "closed_done": 8,
     "deferred": 0,
-    "in_progress": 0,
-    "ready": 1,
+    "in_progress": 1,
+    "ready": 0,
     "total": 9
   },
   "projection_version": 1,
-  "tasks_tree_oid": "3a0a407ac68b3532680c5b497642605e90e681d2"
+  "tasks_tree_oid": "9710cfc2bf0f40c1908ba733095553c608af2122"
 }
