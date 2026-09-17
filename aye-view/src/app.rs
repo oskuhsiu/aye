@@ -21,6 +21,8 @@ pub struct App {
     pub list_offset: usize,
     pub help: bool,
     pub quit: bool,
+    pub refresh_requested: bool,
+    pub refresh_error: Option<String>,
 }
 impl App {
     pub fn new(snapshot: ReaderSnapshot) -> Self {
@@ -37,7 +39,54 @@ impl App {
             list_offset: 0,
             help: false,
             quit: false,
+            refresh_requested: false,
+            refresh_error: None,
         }
+    }
+    pub fn apply_update(&mut self, update: crate::watch::Update) {
+        match update {
+            crate::watch::Update::Failed(error) => self.refresh_error = Some(error),
+            crate::watch::Update::Snapshot(snapshot) => self.replace_snapshot(snapshot),
+        }
+    }
+    pub fn replace_snapshot(&mut self, snapshot: ReaderSnapshot) {
+        let selected = self.selected_id.clone();
+        let index = selected
+            .as_ref()
+            .and_then(|id| self.visible_ids.iter().position(|v| v == id))
+            .unwrap_or(0);
+        let mut neighbors = Vec::new();
+        if let Some(id) = &selected {
+            if let Some(task) = self.snapshot.state.tasks.get(id) {
+                neighbors.extend(task.depends_on.iter().cloned());
+            }
+            if let Some(dependents) = self.relations.blocks.get(id) {
+                neighbors.extend(dependents.iter().cloned());
+            }
+        }
+        self.snapshot = snapshot;
+        self.relations = Relations::new(&self.snapshot.state);
+        self.visible_ids = current_ids(&self.snapshot.state);
+        let next = selected
+            .filter(|id| self.visible_ids.contains(id))
+            .or_else(|| {
+                neighbors
+                    .into_iter()
+                    .find(|id| self.visible_ids.contains(id))
+            })
+            .or_else(|| {
+                self.visible_ids
+                    .get(index.min(self.visible_ids.len().saturating_sub(1)))
+                    .cloned()
+            });
+        if next != self.selected_id {
+            self.detail_scroll = 0;
+        }
+        self.selected_id = next;
+        self.list_offset = self
+            .list_offset
+            .min(self.visible_ids.len().saturating_sub(1));
+        self.refresh_error = None;
     }
     pub fn select(&mut self, id: &str) {
         if self.snapshot.state.tasks.contains_key(id) && self.selected_id.as_deref() != Some(id) {
@@ -79,6 +128,7 @@ impl App {
         }
         match key.code {
             KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('r') => self.refresh_requested = true,
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.pane = Pane::Detail,
             KeyCode::Esc | KeyCode::Left | KeyCode::Backspace => self.pane = Pane::Main,
             KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {

@@ -40,9 +40,22 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         render_list(frame, app, main);
     }
     frame.render_widget(
-        Paragraph::new("j/k ↑↓ Move · Enter Detail · Esc Back · PgUp/Dn Scroll · ? Help · q Quit"),
+        Paragraph::new(
+            "j/k ↑↓ Move · Enter Detail · Esc Back · PgUp/Dn Scroll · r Refresh · ? Help · q Quit",
+        ),
         chunks[2],
     );
+    if let Some(error) = &app.refresh_error {
+        frame.render_widget(Clear, chunks[2]);
+        frame.render_widget(
+            Paragraph::new(format!(
+                "! Showing last good state (r retry): {}",
+                sanitize(error).replace('\n', " ")
+            ))
+            .style(Style::default().fg(Color::Red)),
+            chunks[2],
+        );
+    }
     if app.help {
         render_help(frame);
     }
@@ -262,6 +275,6 @@ fn wrapped_lines(text: &str, width: usize) -> Vec<String> {
 fn render_help(frame: &mut Frame) {
     let area = frame.area();
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: switch pane               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nThis foundation opens in List; further modes arrive separately.")
+    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: switch pane               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\nr: local refresh; shared state is checked every 500 ms\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nThis foundation opens in List; further modes arrive separately.")
         .block(block("Help · ? or Esc to return",true)).wrap(ratatui::widgets::Wrap {trim:false}),area);
 }

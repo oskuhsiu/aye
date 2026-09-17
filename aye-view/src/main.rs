@@ -1,5 +1,5 @@
 use aye::{error::Error, reader::Reader};
-use aye_view::{app::App, model::sanitize, view};
+use aye_view::{app::App, model::sanitize, view, watch::Watcher};
 use crossterm::{
     event::{self, Event},
     execute,
@@ -24,6 +24,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .current_oid()?
         .ok_or_else(|| Error::new("NOT_INITIALIZED", "No aye task state found. Run aye init."))?;
     let mut app = App::new(reader.load(&oid)?);
+    let watcher = Watcher::start(reader, app.snapshot.oid.clone())?;
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err("aye-view requires an interactive terminal".into());
     }
@@ -33,11 +34,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
     while !app.quit {
+        if let Some(update) = watcher.take_update() {
+            app.apply_update(update);
+        }
         terminal.draw(|frame| view::render(frame, &mut app))?;
         if event::poll(Duration::from_millis(250))?
             && let Event::Key(key) = event::read()?
         {
             app.handle_key(key);
+            if app.refresh_requested {
+                app.refresh_requested = false;
+                watcher.refresh();
+            }
         }
     }
     Ok(())
