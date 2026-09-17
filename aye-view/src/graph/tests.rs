@@ -206,3 +206,181 @@ fn every_symbol_no_color_and_repeat_frame_are_meaningful() {
         assert_eq!(terminal.backend().buffer(), &first);
     }
 }
+
+fn crossing_fixture() -> State {
+    let mut state = State::empty();
+    let mut tasks: Vec<_> = (0..5)
+        .map(|i| {
+            let mut t = Task::new(char::from(b'A' + i).to_string(), NOW);
+            t.id = format!("t-{i:020x}");
+            t
+        })
+        .collect();
+    tasks[3].depends_on = vec![tasks[0].id.clone()];
+    tasks[2].depends_on = vec![tasks[1].id.clone()];
+    tasks[4].depends_on = vec![tasks[2].id.clone(), tasks[3].id.clone()];
+    for task in tasks {
+        state.tasks.insert(task.id.clone(), task);
+    }
+    state.validate().unwrap();
+    state
+}
+fn segments_share_straight(a: &Edge, b: &Edge) -> bool {
+    a.points.windows(2).any(|a| {
+        b.points.windows(2).any(|b| {
+            let horizontal = a[0].1 == a[1].1 && b[0].1 == b[1].1 && a[0].1 == b[0].1;
+            let vertical = a[0].0 == a[1].0 && b[0].0 == b[1].0 && a[0].0 == b[0].0;
+            if horizontal {
+                a[0].0.min(a[1].0).max(b[0].0.min(b[1].0))
+                    < a[0].0.max(a[1].0).min(b[0].0.max(b[1].0))
+            } else if vertical {
+                a[0].1.min(a[1].1).max(b[0].1.min(b[1].1))
+                    < a[0].1.max(a[1].1).min(b[0].1.max(b[1].1))
+            } else {
+                false
+            }
+        })
+    })
+}
+#[test]
+fn crossed_dependencies_remain_visually_distinct_paths() {
+    let state = crossing_fixture();
+    let graph = Graph::new(&state, &current_ids(&state));
+    let mut terminal = Terminal::new(TestBackend::new(130, 16)).unwrap();
+    terminal
+        .draw(|f| {
+            draw(
+                f,
+                f.area(),
+                &graph,
+                &state,
+                None,
+                Viewport::default(),
+                false,
+            )
+        })
+        .unwrap();
+    let frame = terminal.backend().buffer();
+    let text = frame
+        .content
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect::<String>();
+    assert!(
+        text.contains('╳'),
+        "independent paths must visibly cross without joining: {text}"
+    );
+    for a in &graph.edges {
+        for b in &graph.edges {
+            if a.prerequisite != b.prerequisite && a.dependent != b.dependent {
+                assert!(
+                    !segments_share_straight(a, b),
+                    "independent paths share a straight segment: {a:?}, {b:?}"
+                );
+            }
+        }
+    }
+    for edge in &graph.edges {
+        let source = &graph.nodes[&edge.prerequisite];
+        let target = &graph.nodes[&edge.dependent];
+        assert_ne!(
+            edge.points[0].1 - source.y,
+            edge.points.last().unwrap().1 - target.y
+        );
+        for points in edge.points.windows(3) {
+            let (previous, corner, next) = (points[0], points[1], points[2]);
+            let expected = match (
+                previous.0 < corner.0,
+                previous.1 < corner.1,
+                next.0 > corner.0,
+                next.1 > corner.1,
+            ) {
+                (true, false, false, true) => "┐",
+                (true, false, false, false) => "┘",
+                (false, true, true, false) => "└",
+                (false, false, true, false) => "┌",
+                _ => panic!("unexpected route bend"),
+            };
+            let actual = frame[(corner.0 as u16, corner.1 as u16)].symbol();
+            // Shared target branches may form a real junction, never an independent fake junction.
+            assert!(
+                actual == expected
+                    || actual == "├"
+                    || actual == "┤"
+                    || actual == "┬"
+                    || actual == "┴"
+                    || actual == "╳",
+                "bend expected {expected}, got {actual}"
+            );
+        }
+        let end = *edge.points.last().unwrap();
+        assert_eq!(frame[(end.0 as u16, end.1 as u16)].symbol(), "→");
+    }
+}
+
+#[test]
+fn long_edge_departure_arrival_tracks_never_share_independent_segments() {
+    let mut state = crossing_fixture();
+    let a = "t-00000000000000000000".to_string();
+    let b = "t-00000000000000000001".to_string();
+    let c = "t-00000000000000000002".to_string();
+    let d = "t-00000000000000000003".to_string();
+    let e = "t-00000000000000000004".to_string();
+    state.tasks.get_mut(&e).unwrap().depends_on.push(a);
+    let mut f = Task::new("F".into(), NOW);
+    f.id = "t-00000000000000000005".into();
+    f.depends_on = vec![b, c, d];
+    state.tasks.insert(f.id.clone(), f);
+    state.validate().unwrap();
+    let graph = Graph::new(&state, &current_ids(&state));
+    assert_eq!(
+        graph.edges.iter().filter(|e| e.points.len() == 6).count(),
+        2
+    );
+    for a in &graph.edges {
+        for b in &graph.edges {
+            if a.prerequisite != b.prerequisite && a.dependent != b.dependent {
+                assert!(
+                    !segments_share_straight(a, b),
+                    "independent long/short paths overlap: {a:?} {b:?}"
+                );
+            }
+        }
+    }
+    let mut terminal = Terminal::new(TestBackend::new(150, 24)).unwrap();
+    terminal
+        .draw(|f| {
+            draw(
+                f,
+                f.area(),
+                &graph,
+                &state,
+                None,
+                Viewport::default(),
+                false,
+            )
+        })
+        .unwrap();
+    let frame = terminal.backend().buffer();
+    assert!(frame.content.iter().any(|cell| cell.symbol() == "╳"));
+    for edge in &graph.edges {
+        for pair in edge.points.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            if a.1 == b.1 {
+                for x in a.0.min(b.0) + 1..a.0.max(b.0) {
+                    assert!(
+                        ["─", "┬", "┴", "┼", "╳"].contains(&frame[(x as u16, a.1 as u16)].symbol()),
+                        "horizontal path interrupted"
+                    );
+                }
+            } else {
+                for y in a.1.min(b.1) + 1..a.1.max(b.1) {
+                    assert!(
+                        ["│", "├", "┤", "┼", "╳"].contains(&frame[(a.0 as u16, y as u16)].symbol()),
+                        "vertical path interrupted"
+                    );
+                }
+            }
+        }
+    }
+}
