@@ -1,19 +1,42 @@
 # aye task format v1
 
-Open the `agent-tasks` branch to read task state. Local CLI state lives at
-`refs/agent-tasks/state`, shared by linked worktrees; the source branch and index
-are unrelated. Synchronization publishes the task branch with ordinary Git
-commits. The task history has its own root.
+Local and remote task state use the custom ref `refs/agent-tasks/state`, shared
+locally by linked worktrees. The source branch and index are unrelated. Task
+history has its own root. This transport is specified by v0.3.2 (aye 0.2.0);
+canonical project format and task schema remain 1.
 
-## Tool-less reading
+## Reading through Git or API
 
-1. Read this file and `project.json`.
-2. Read `manifest.json`, then `views/ready.jsonl` for actionable work or
-   `views/active.jsonl` for every non-closed task.
-3. Select a full ID and read its canonical JSON. For example,
-   `t-a1b20000000000000000` maps to `tasks/a1/t-a1b20000000000000000.json`.
-4. If derived files are missing or stale, read all canonical task JSON files and
-   compute the rules below. `REPORT.md` is only a human summary.
+Ordinary clone/fetch normally omits custom refs. `aye init` and `aye sync` fetch
+explicitly, tracking the selected remote at `refs/agent-tasks/remotes/<remote>/state`.
+For direct Git inspection:
+
+```sh
+git fetch origin refs/agent-tasks/state:refs/agent-tasks/remotes/origin/state
+git show refs/agent-tasks/remotes/origin/state:project.json
+git show refs/agent-tasks/remotes/origin/state:views/ready.jsonl
+```
+
+A GitHub `.git` URL is a transport endpoint, not an HTTP filesystem. API readers:
+
+1. Call `GET /repos/{owner}/{repo}/git/matching-refs/agent-tasks/state` and select
+   the exact `refs/agent-tasks/state` result; require object type `commit`.
+2. Read `/git/commits/{sha}` under that repository to obtain its root tree SHA.
+3. Traverse `/git/trees/{sha}` entries to the desired path. If using a recursive
+   tree response, check truncation and traverse omitted subtrees explicitly.
+4. Read `/git/blobs/{sha}` and decode the declared content encoding.
+
+Pin all reads to the selected commit. Read this file and `project.json`, then
+`manifest.json` and `views/ready.jsonl` or `views/active.jsonl`. A full task ID such
+as `t-a1b20000000000000000` maps to `tasks/a1/t-a1b20000000000000000.json`.
+If views are absent or stale, traverse canonical task blobs and compute the rules
+below. `REPORT.md` is only a derived human summary.
+
+GitHub branch pages, branch protection, Contents URLs and raw branch URLs are not
+the custom-ref access contract. Repository permissions apply; API readers need
+applicable Contents read permission. Custom refs are not secret storage. Browser-only
+Agents are outside the supported scope. Backups must include custom refs explicitly,
+and `git log --all` can display locally reachable task history.
 
 `project.json` contains `format` (`agent-tasks`), `format_version` (1), and a
 UUIDv4 `project_id`. Different project IDs must never be merged. A newer format
@@ -85,8 +108,9 @@ manual blocker and unresolved dependency IDs, in the same stable order.
 total, ready, blocked, in_progress, deferred, closed_done, closed_cancelled.
 The OID is the actual Git `tasks/` subtree OID, excluding derived files.
 
-Compare the manifest OID to `git rev-parse agent-tasks:tasks` after fetching the
-branch. A differing OID, unsupported projection version, missing file or corrupt
+Compare the manifest OID to
+`git rev-parse refs/agent-tasks/remotes/origin/state:tasks` after explicit fetch.
+API readers compare it to the `tasks` tree entry in the selected commit. A differing OID, unsupported projection version, missing file or corrupt
 projection means views must not be trusted. Read canonical files instead. The
 CLI warns `VIEW_STALE`, computes accurate results in memory, and does not commit
 on reads. `aye rebuild` repairs derived files without changing canonical bytes;
@@ -96,14 +120,17 @@ repeating it with identical output creates no commit.
 (closed time descending, ID ascending), and last 20 discovered (creation time
 descending, ID ascending). No wall-clock metadata changes projection bytes.
 
-## Tool-less write limitations
+## External write limitations
 
-Reading needs no CLI. Editing via a web UI does not provide atomic claims,
-validation, ownership enforcement, dependency-cycle checks, or concurrent-write
-protection. Do not infer that a displayed ready task is still claimable; use
-`aye claim` to obtain ownership. Prefer `aye` for writes. External editors must
-preserve this entire schema and graph invariants and refresh views using the CLI.
-Derived files are never canonical input, and editing a view does not edit a task.
+Use `aye` for task writes: external Git/API editing does not automatically enforce
+atomic claims, ownership, graph invariants or concurrency safety. A displayed ready
+task may already have been claimed; use `aye claim`. External editors must preserve
+the complete schema and graph and refresh views through the CLI. Derived files are
+never canonical input, and editing a view does not edit a task.
+
 Sync conflicts freeze writes across linked worktrees until resolved or aborted;
-readers may still inspect the local canonical state. Never force-push task state
-or merge different projects to bypass these protections.
+reads remain available. Pending metadata identifies the remote and `remote_ref`;
+legacy or mismatched targets must be rejected by `resolve --continue`. Observation
+of remote state is scoped by both remote and ref. The exact remote state object
+must be a commit. No legacy task branch is automatically adopted or used as fallback.
+Never force-push task state or merge different projects to bypass these protections.
