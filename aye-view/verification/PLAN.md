@@ -48,11 +48,19 @@ Task IDs, in that order: `t-862c48d87c375516b52e`,
 
 The existing aye package gains a library entrypoint: existing CLI implementation
 and write-capable modules remain private, with a public CLI runner for its binary.
-A separate public read-only reader wraps the same canonical parsing/validation.
+A separate public read-only reader uses the same canonical parsing/validation.
 The viewer depends on that library by relative Cargo path, not on an installed
-aye subprocess. It uses one pinned commit per snapshot, batch object reading,
-and explicitly disables Git's implicit lazy fetching during reader operations.
-No new workspace root or separate Git repository is needed.
+aye subprocess. It uses one pinned commit per snapshot and local object reads
+through git2 with network features disabled. No new workspace root or separate
+Git repository is needed.
+
+A preimplementation failure case found that Git 2.40 can modify a partial
+clone's config during implicit fetching even when transport is forbidden.
+Therefore the reader uses local object APIs instead of CLI object reads;
+checking that objects exist before a CLI read would leave a race. The existing
+aye CLI storage behavior is retained. Missing objects fail locally without
+repair or fetching. Dependency details are in the
+[git2 documentation](https://github.com/rust-lang/git2-rs).
 
 The terminal uses Ratatui 0.30 with Crossterm 0.29, consistent with the
 [official installation guide](https://ratatui.rs/installation/). A transient app
