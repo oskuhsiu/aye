@@ -1,5 +1,6 @@
 use crate::{
-    app::{App, Pane},
+    app::{App, Mode, Pane},
+    graph,
     model::{sanitize, status},
 };
 use ratatui::{
@@ -21,26 +22,35 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .split(frame.area());
     frame.render_widget(
         Paragraph::new(format!(
-            "aye-view · List · {} current tasks · read-only",
+            "aye-view · {} · {} current tasks · read-only",
+            if app.mode == Mode::Graph {
+                "Graph"
+            } else {
+                "List"
+            },
             app.visible_ids.len()
         )),
         chunks[0],
     );
     let main = chunks[1];
     if main.width >= 90 {
+        let main_percent = if app.mode == Mode::Graph { 65 } else { 45 };
         let panes = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+            .constraints([
+                Constraint::Percentage(main_percent),
+                Constraint::Percentage(100 - main_percent),
+            ])
             .split(main);
-        render_list(frame, app, panes[0]);
+        render_main(frame, app, panes[0]);
         render_detail(frame, app, panes[1]);
     } else if app.pane == Pane::Detail {
         render_detail(frame, app, main);
     } else {
-        render_list(frame, app, main);
+        render_main(frame, app, main);
     }
     frame.render_widget(
-        Paragraph::new("j/k ↑↓ Move · Enter Detail · Esc Back · PgUp/Dn Scroll · ? Help · q Quit"),
+        Paragraph::new("Tab Graph/List · j/k ↑↓ Move · Enter Detail · Esc Back · ? Help · q Quit"),
         chunks[2],
     );
     if app.help {
@@ -51,11 +61,51 @@ fn block(title: &str, focused: bool) -> Block<'_> {
     Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(if focused {
+        .border_style(if focused && graph::colors_enabled() {
             Style::default().fg(Color::Cyan)
         } else {
             Style::default()
         })
+}
+fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
+    if app.mode == Mode::List {
+        render_list(frame, app, area);
+        return;
+    }
+    app.ensure_graph();
+    let title = if app.visible_ids.len() > 500 {
+        "Current Graph · Large graph; Tab for List"
+    } else {
+        "Current Graph · prerequisite → dependent"
+    };
+    let block = block(title, app.pane == Pane::Main);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if app.visible_ids.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No current tasks. Create work with aye create <title>.")
+                .wrap(ratatui::widgets::Wrap { trim: false }),
+            inner,
+        );
+        return;
+    }
+    if app.graph_anchor != app.selected_id || app.graph_size != (inner.width, inner.height) {
+        if let Some(id) = &app.selected_id {
+            app.graph
+                .reveal(id, &mut app.graph_viewport, inner.width, inner.height);
+        }
+        app.graph_anchor = app.selected_id.clone();
+        app.graph_size = (inner.width, inner.height);
+    }
+    graph::draw(
+        frame,
+        inner,
+        &app.graph,
+        &app.snapshot.state,
+        app.selected_id.as_deref(),
+        app.graph_viewport,
+        graph::colors_enabled(),
+    );
 }
 fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = block("List", app.pane == Pane::Main);
@@ -75,13 +125,9 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
             let t = &app.snapshot.state.tasks[id];
             let (symbol, label) = status(&app.snapshot.state, t);
             let title = sanitize(&t.title).replace('\n', " ");
-            ListItem::new(format!("{symbol} {} {title} [{label}]", t.priority)).style(match label {
-                "ready" => Style::default().fg(Color::Green),
-                "in_progress" => Style::default().fg(Color::Cyan),
-                "blocked" => Style::default().fg(Color::Red),
-                "deferred" => Style::default().fg(Color::Yellow),
-                _ => Style::default().add_modifier(Modifier::DIM),
-            })
+            ListItem::new(format!("{symbol} {} {title} [{label}]", t.priority)).style(
+                graph::task_style(&app.snapshot.state, t, graph::colors_enabled()),
+            )
         })
         .collect::<Vec<_>>();
     let selected = app
@@ -218,7 +264,7 @@ pub fn detail_text(app: &App) -> String {
 }
 fn render_detail(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = block(
-        "Detail · Enter/Tab focus · PgUp/PgDown scroll",
+        "Detail · Enter focus · PgUp/PgDown scroll",
         app.pane == Pane::Detail,
     );
     let inner = block.inner(area);
@@ -262,6 +308,6 @@ fn wrapped_lines(text: &str, width: usize) -> Vec<String> {
 fn render_help(frame: &mut Frame) {
     let area = frame.area();
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: switch pane               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nThis foundation opens in List; further modes arrive separately.")
+    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: Graph/List               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nGraph arrows point from prerequisite to dependent. Tab opens List.")
         .block(block("Help · ? or Esc to return",true)).wrap(ratatui::widgets::Wrap {trim:false}),area);
 }
