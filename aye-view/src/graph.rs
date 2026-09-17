@@ -13,7 +13,6 @@ use unicode_segmentation::UnicodeSegmentation;
 
 pub const NODE_WIDTH: i64 = 28;
 pub const NODE_HEIGHT: i64 = 4;
-const COLUMN_STEP: i64 = 36;
 const ROW_STEP: i64 = 6;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Node {
@@ -107,6 +106,30 @@ impl Graph {
                 .iter()
                 .filter(|(from, to)| ranks[to] > ranks[from] + 1)
                 .count() as i64;
+            // Reserve one vertical track per adjacent edge, and separate departure
+            // and arrival tracks for long edges. Sharing a gap never shares a track.
+            let mut track_counts: BTreeMap<usize, usize> = BTreeMap::new();
+            let mut tracks = Vec::with_capacity(edges.len());
+            for (from, to) in &edges {
+                let count = track_counts.entry(ranks[from]).or_default();
+                let departure = *count;
+                *count += 1;
+                let arrival = if ranks[to] > ranks[from] + 1 {
+                    let count = track_counts.entry(ranks[to] - 1).or_default();
+                    let slot = *count;
+                    *count += 1;
+                    Some(slot)
+                } else {
+                    None
+                };
+                tracks.push((departure, arrival));
+            }
+            let last_layer = members.iter().map(|id| ranks[id]).max().unwrap_or(0);
+            let mut columns = vec![0; last_layer + 1];
+            for layer in 0..last_layer {
+                let gap = (track_counts.get(&layer).copied().unwrap_or(0) as i64 * 2 + 3).max(8);
+                columns[layer + 1] = columns[layer] + NODE_WIDTH + gap;
+            }
             let node_y = base_y + long_count * 2;
             let mut rows: BTreeMap<usize, i64> = BTreeMap::new();
             for id in ids.iter().filter(|id| members.contains(*id)) {
@@ -117,26 +140,29 @@ impl Graph {
                     Node {
                         id: id.clone(),
                         layer,
-                        x: layer as i64 * COLUMN_STEP,
+                        x: columns[layer],
                         y: node_y + *row * ROW_STEP,
                     },
                 );
                 *row += 1;
             }
             let mut long_index = 0;
-            for (from, to) in edges {
+            for ((from, to), (departure, arrival)) in edges.into_iter().zip(tracks) {
                 let a = &graph.nodes[from];
                 let b = &graph.nodes[to];
-                let start = (a.x + NODE_WIDTH, a.y + 2);
+                let start = (a.x + NODE_WIDTH, a.y + 1);
                 let end = (b.x - 1, b.y + 2);
                 let points = if b.layer == a.layer + 1 {
-                    let mid = a.x + NODE_WIDTH + 3;
+                    let mid = a.x + NODE_WIDTH + 1 + departure as i64 * 2;
                     vec![start, (mid, start.1), (mid, end.1), end]
                 } else {
                     let track = base_y + long_index * 2;
                     long_index += 1;
-                    let left = a.x + NODE_WIDTH + 2;
-                    let right = b.x - 3;
+                    let left = a.x + NODE_WIDTH + 1 + departure as i64 * 2;
+                    let right = columns[b.layer - 1]
+                        + NODE_WIDTH
+                        + 1
+                        + arrival.expect("long edge arrival track") as i64 * 2;
                     vec![
                         start,
                         (left, start.1),
@@ -220,14 +246,7 @@ pub fn draw(
         area,
         viewport,
     };
-    for edge in &graph.edges {
-        for segment in edge.points.windows(2) {
-            canvas.line(segment[0], segment[1], Style::default(), true);
-        }
-        if let Some(&(x, y)) = edge.points.last() {
-            canvas.cell(x, y, "→", Style::default());
-        }
-    }
+    canvas.edges(graph);
     for node in graph.nodes.values() {
         if node.x + NODE_WIDTH <= viewport.x
             || node.x >= viewport.x + i64::from(area.width)
@@ -251,25 +270,21 @@ pub fn draw(
             (node.x + 1, node.y),
             (node.x + NODE_WIDTH - 2, node.y),
             style,
-            false,
         );
         canvas.line(
             (node.x + 1, node.y + NODE_HEIGHT - 1),
             (node.x + NODE_WIDTH - 2, node.y + NODE_HEIGHT - 1),
             style,
-            false,
         );
         canvas.line(
             (node.x, node.y + 1),
             (node.x, node.y + NODE_HEIGHT - 2),
             style,
-            false,
         );
         canvas.line(
             (node.x + NODE_WIDTH - 1, node.y + 1),
             (node.x + NODE_WIDTH - 1, node.y + NODE_HEIGHT - 2),
             style,
-            false,
         );
         for (dx, dy, symbol) in [
             (0, 0, "┌"),
@@ -321,6 +336,38 @@ fn truncate(text: &str, width: usize) -> String {
     result.push('…');
     result
 }
+const NORTH: u8 = 1;
+const EAST: u8 = 2;
+const SOUTH: u8 = 4;
+const WEST: u8 = 8;
+#[derive(Clone, Copy, Default)]
+struct Stroke {
+    directions: u8,
+    first_edge: Option<usize>,
+    same_source: bool,
+    same_target: bool,
+}
+impl Stroke {
+    fn symbol(self) -> &'static str {
+        if !self.same_source && !self.same_target {
+            return "╳";
+        }
+        match self.directions {
+            1 | 4 | 5 => "│",
+            2 | 8 | 10 => "─",
+            3 => "└",
+            6 => "┌",
+            9 => "┘",
+            12 => "┐",
+            7 => "├",
+            11 => "┴",
+            13 => "┤",
+            14 => "┬",
+            15 => "┼",
+            _ => " ",
+        }
+    }
+}
 struct Canvas<'a> {
     buffer: &'a mut Buffer,
     area: Rect,
@@ -341,14 +388,14 @@ impl Canvas<'_> {
             self.buffer[p].set_symbol(symbol).set_style(style);
         }
     }
-    fn line(&mut self, a: (i64, i64), b: (i64, i64), style: Style, join: bool) {
+    fn line(&mut self, a: (i64, i64), b: (i64, i64), style: Style) {
         if a.1 == b.1 {
             let lo = a.0.min(b.0).max(self.viewport.x);
             let hi =
                 a.0.max(b.0)
                     .min(self.viewport.x + i64::from(self.area.width) - 1);
             for x in lo..=hi {
-                self.stroke(x, a.1, "─", style, join);
+                self.cell(x, a.1, "─", style);
             }
         } else {
             let lo = a.1.min(b.1).max(self.viewport.y);
@@ -356,21 +403,89 @@ impl Canvas<'_> {
                 a.1.max(b.1)
                     .min(self.viewport.y + i64::from(self.area.height) - 1);
             for y in lo..=hi {
-                self.stroke(a.0, y, "│", style, join);
+                self.cell(a.0, y, "│", style);
             }
         }
     }
-    fn stroke(&mut self, x: i64, y: i64, symbol: &str, style: Style, join: bool) {
-        if let Some(p) = self.position(x, y) {
-            let old = self.buffer[p].symbol();
-            let symbol = if join
-                && ((symbol == "─" && old == "│") || (symbol == "│" && old == "─") || old == "┼")
-            {
-                "┼"
+    fn edges(&mut self, graph: &Graph) {
+        // Only visible cells carry routing metadata, regardless of world dimensions.
+        let mut strokes =
+            vec![Stroke::default(); usize::from(self.area.width) * usize::from(self.area.height)];
+        for (index, edge) in graph.edges.iter().enumerate() {
+            for segment in edge.points.windows(2) {
+                let (a, b) = (segment[0], segment[1]);
+                if a.1 == b.1 {
+                    if a.1 < self.viewport.y || a.1 >= self.viewport.y + i64::from(self.area.height)
+                    {
+                        continue;
+                    }
+                    let low = a.0.min(b.0);
+                    let high = a.0.max(b.0);
+                    for x in low.max(self.viewport.x)
+                        ..=high.min(self.viewport.x + i64::from(self.area.width) - 1)
+                    {
+                        let directions =
+                            if x > low { WEST } else { 0 } | if x < high { EAST } else { 0 };
+                        self.record(&mut strokes, graph, index, (x, a.1), directions);
+                    }
+                } else {
+                    if a.0 < self.viewport.x || a.0 >= self.viewport.x + i64::from(self.area.width)
+                    {
+                        continue;
+                    }
+                    let low = a.1.min(b.1);
+                    let high = a.1.max(b.1);
+                    for y in low.max(self.viewport.y)
+                        ..=high.min(self.viewport.y + i64::from(self.area.height) - 1)
+                    {
+                        let directions =
+                            if y > low { NORTH } else { 0 } | if y < high { SOUTH } else { 0 };
+                        self.record(&mut strokes, graph, index, (a.0, y), directions);
+                    }
+                }
+            }
+        }
+        for y in 0..self.area.height {
+            for x in 0..self.area.width {
+                let stroke =
+                    strokes[usize::from(y) * usize::from(self.area.width) + usize::from(x)];
+                if stroke.directions != 0 {
+                    self.cell(
+                        self.viewport.x + i64::from(x),
+                        self.viewport.y + i64::from(y),
+                        stroke.symbol(),
+                        Style::default(),
+                    );
+                }
+            }
+        }
+        for edge in &graph.edges {
+            if let Some(&(x, y)) = edge.points.last() {
+                self.cell(x, y, "→", Style::default());
+            }
+        }
+    }
+    fn record(
+        &self,
+        strokes: &mut [Stroke],
+        graph: &Graph,
+        index: usize,
+        point: (i64, i64),
+        directions: u8,
+    ) {
+        if let Some((x, y)) = self.position(point.0, point.1) {
+            let cell = &mut strokes[usize::from(y - self.area.y) * usize::from(self.area.width)
+                + usize::from(x - self.area.x)];
+            cell.directions |= directions;
+            if let Some(first) = cell.first_edge {
+                cell.same_source &=
+                    graph.edges[first].prerequisite == graph.edges[index].prerequisite;
+                cell.same_target &= graph.edges[first].dependent == graph.edges[index].dependent;
             } else {
-                symbol
-            };
-            self.buffer[p].set_symbol(symbol).set_style(style);
+                cell.first_edge = Some(index);
+                cell.same_source = true;
+                cell.same_target = true;
+            }
         }
     }
     fn text(&mut self, mut x: i64, y: i64, text: &str, style: Style) {
