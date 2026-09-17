@@ -17,6 +17,10 @@ pub enum Mode {
 }
 
 pub struct App {
+    pub focus_root: Option<String>,
+    pub help_scroll: usize,
+    pub help_max_scroll: usize,
+    pub help_page: usize,
     pub history: Option<crate::history::HistoryState>,
     pub recent: crate::history::RecentState,
     pub query: crate::query::QueryState,
@@ -44,6 +48,10 @@ impl App {
     pub fn new(snapshot: ReaderSnapshot) -> Self {
         let visible_ids = current_ids(&snapshot.state);
         Self {
+            focus_root: None,
+            help_scroll: 0,
+            help_max_scroll: 0,
+            help_page: 1,
             history: None,
             recent: crate::history::RecentState::default(),
             query: crate::query::QueryState::default(),
@@ -168,9 +176,28 @@ impl App {
             return;
         }
         if self.help {
-            if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
-                self.help = false;
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') => self.help = false,
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.help_scroll = self.help_scroll.saturating_add(1).min(self.help_max_scroll)
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.help_scroll = self.help_scroll.saturating_sub(1)
+                }
+                KeyCode::PageDown => {
+                    self.help_scroll = self
+                        .help_scroll
+                        .saturating_add(self.help_page)
+                        .min(self.help_max_scroll)
+                }
+                KeyCode::PageUp => {
+                    self.help_scroll = self.help_scroll.saturating_sub(self.help_page)
+                }
+                _ => {}
             }
+            return;
+        }
+        if self.handle_focus_key(key) {
             return;
         }
         if self.handle_history_key(key) {
@@ -179,7 +206,10 @@ impl App {
         match key.code {
             KeyCode::Char('/') => self.open_search(),
             KeyCode::Char('f') => self.open_filters(),
-            KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('?') => {
+                self.help = true;
+                self.help_scroll = 0;
+            }
             KeyCode::Char('r') => self.refresh_requested = true,
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.pane = Pane::Detail,
             KeyCode::Esc | KeyCode::Left | KeyCode::Backspace => self.pane = Pane::Main,

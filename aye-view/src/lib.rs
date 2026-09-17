@@ -13,3 +13,7 @@ pub mod watch;
 pub mod history;
 #[cfg(test)]
 mod history_tests;
+
+pub mod focus;
+#[cfg(test)]
+mod focus_tests;

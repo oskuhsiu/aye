@@ -121,10 +121,19 @@ impl App {
             .as_ref()
             .and_then(|id| self.visible_ids.iter().position(|value| value == id))
             .unwrap_or(0);
+        if self
+            .focus_root
+            .as_ref()
+            .is_some_and(|id| !self.snapshot.state.tasks.contains_key(id))
+        {
+            self.focus_root = None;
+        }
         let history_ids = self.history_candidates();
         let state = &self.snapshot.state;
         let mut ids = if let Some(ids) = history_ids {
             ids
+        } else if let Some(root) = &self.focus_root {
+            crate::focus::ids(state, &self.relations, root)
         } else if matches!(
             self.query.filters.state.as_deref(),
             Some("closed" | "closed(done)" | "closed(cancelled)")
@@ -207,6 +216,12 @@ impl App {
                 KeyCode::Enter => {
                     if let Some(id) = search.results.get(search.selected).cloned() {
                         self.close_history();
+                        if self.focus_root.as_ref().is_some_and(|root| {
+                            !crate::focus::ids(&self.snapshot.state, &self.relations, root)
+                                .contains(&id)
+                        }) {
+                            self.focus_root = None;
+                        }
                         self.query.revealed_id = Some(id.clone());
                         self.refresh_visible();
                         self.select(&id);

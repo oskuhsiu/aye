@@ -17,6 +17,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
+            Constraint::Length(if frame.area().width < 70 { 2 } else { 1 }),
             Constraint::Min(0),
             Constraint::Length(1),
         ])
@@ -26,6 +27,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             "aye-view · {} · {} visible tasks{}{} · read-only",
             if app.history.is_some() {
                 "History"
+            } else if app.focus_root.is_some() {
+                if app.mode == Mode::Graph {
+                    "Focus Graph"
+                } else {
+                    "Focus List"
+                }
             } else if app.mode == Mode::Graph {
                 "Graph"
             } else {
@@ -45,7 +52,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         )),
         chunks[0],
     );
-    let main = chunks[1];
+    frame.render_widget(
+        Paragraph::new(status_summary(app)).wrap(ratatui::widgets::Wrap { trim: false }),
+        chunks[1],
+    );
+    let main = chunks[2];
     if main.width >= 90 {
         let main_percent = if app.mode == Mode::Graph && app.history.is_none() {
             65
@@ -67,24 +78,32 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         render_main(frame, app, main);
     }
     frame.render_widget(
-        Paragraph::new(
-            "Tab Graph/List · / Search · f Filter · c Recent · h History · ] Recent task · r Refresh · ? Help · q Quit",
-        ),
-        chunks[2],
+        Paragraph::new(if frame.area().width<60 {
+            "? Help · q Quit · Esc Back"
+        } else if frame.area().width<110 {
+            "? Help · q Quit · Esc Back · Tab Graph/List · F Focus"
+        } else {
+            "? Help · q Quit · F Focus · g Current · Tab Graph/List · / Search · f Filter · c Recent · h History · r Refresh"
+        }),
+        chunks[3],
     );
     if let Some(error) = &app.refresh_error {
-        frame.render_widget(Clear, chunks[2]);
+        frame.render_widget(Clear, chunks[3]);
         frame.render_widget(
             Paragraph::new(format!(
                 "! Showing last good state (r retry): {}",
                 sanitize(error).replace('\n', " ")
             ))
-            .style(Style::default().fg(Color::Red)),
-            chunks[2],
+            .style(if graph::colors_enabled() {
+                Style::default().fg(Color::Red)
+            } else {
+                Style::default()
+            }),
+            chunks[3],
         );
     }
     if app.help {
-        render_help(frame);
+        render_help(frame, app);
     }
     crate::query::render(frame, app);
 }
@@ -109,12 +128,17 @@ fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
     app.ensure_graph();
-    let title = if app.visible_ids.len() > 500 {
-        "Current Graph · Large graph; Tab for List"
+    let title = if let Some(root) = &app.focus_root {
+        format!(
+            "Focus · {} · g/Esc Current",
+            sanitize(&app.snapshot.state.tasks[root].title).replace('\n', " ")
+        )
+    } else if app.visible_ids.len() > 500 {
+        "Current Graph · Large graph; Tab for List".into()
     } else {
-        "Current Graph · prerequisite → dependent"
+        "Current Graph · prerequisite → dependent".into()
     };
-    let block = block(title, app.pane == Pane::Main);
+    let block = block(&title, app.pane == Pane::Main);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     if app.graph.nodes.is_empty() {
@@ -349,9 +373,46 @@ fn wrapped_lines(text: &str, width: usize) -> Vec<String> {
     }
     output
 }
-fn render_help(frame: &mut Frame) {
+pub fn status_summary(app: &App) -> String {
+    let mut counts = [0usize; 4];
+    for task in app.snapshot.state.tasks.values() {
+        match app.snapshot.state.effective(task) {
+            "ready" => counts[0] += 1,
+            "in_progress" => counts[1] += 1,
+            "blocked" => counts[2] += 1,
+            "deferred" => counts[3] += 1,
+            _ => {}
+        }
+    }
+    format!(
+        "{}{} ready · {} working · {} blocked · {} deferred",
+        if counts[0] == 0 && counts.iter().sum::<usize>() > 0 {
+            "No ready tasks · "
+        } else {
+            ""
+        },
+        counts[0],
+        counts[1],
+        counts[2],
+        counts[3]
+    )
+}
+fn render_help(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: Graph/List               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\nr: local refresh; shared state is checked every 500 ms\n/ Search all tasks; ↑/↓ results, Enter reveal, Esc cancel\nf Filter: ↑/↓ field, ←/→ cycle, c clear draft, Enter apply\nSearch reveal ends on leaving the task or applying filters.\nc: Recent 24h toggle; ]: next task in the secondary region\nh: all closed History; Esc: return (from Detail, press twice)\nHistory respects filters; arrows/PgUp/PgDown load more rows.\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n╳ marks lines crossing without joining.\n\nCurrent List includes closed prerequisite ancestors.\nGraph arrows point from prerequisite to dependent. Tab opens List.")
-        .block(block("Help · ? or Esc to return",true)).wrap(ratatui::widgets::Wrap {trim:false}),area);
+    let block = block("Help · j/k PgUp/Dn Scroll · Esc Back", true);
+    let inner = block.inner(area);
+    let text = "Graph: Left / Ctrl-h = prerequisite\nGraph: Right / l = dependent\nGraph: Up/Down or k/j = same layer\nShift-arrows: pan without changing selection\nEnter: Detail; Esc: return to main pane\nF: focus selected ancestors and descendants\ng: full Current Graph; Esc leaves focused Main\nFocus clears filters; later filters intersect.\nTab: Graph/List (History: pane switch)\nDetail: j/k or arrows scroll; PgUp/PgDown page\n?: Help; q / Ctrl-c: Quit\n\nr: Refresh local state (poll every 500 ms)\n/ Search all tasks; arrows select; Enter reveal\nSearch outside Focus exits that focus.\nf Filters: up/down field, left/right cycle\nc clears filter draft; Enter applies; Esc cancels\nc: Recent 24h; ]: next unrelated recent task\nRecent is hidden during Focus.\nh: all closed History; Esc returns\nHistory arrows/PgUp/PgDown load more rows.\n\n● ready    ▶ in progress    ! blocked\n⏸ deferred    ✓ done    × cancelled\nCancelled prerequisites do not unlock tasks.\n\nB → A means A depends on B.\nB completion unlocks A.\nParent/discovery are detail context only.\n╳: lines cross without joining.\n\nCurrent Graph includes closed prerequisites.\nFocus root stays fixed as selection moves.";
+    let lines = wrapped_lines(text, usize::from(inner.width));
+    app.help_page = usize::from(inner.height).saturating_sub(1).max(1);
+    app.help_max_scroll = lines.len().saturating_sub(usize::from(inner.height));
+    app.help_scroll = app.help_scroll.min(app.help_max_scroll);
+    let visible = lines
+        .into_iter()
+        .skip(app.help_scroll)
+        .take(usize::from(inner.height))
+        .map(Line::raw)
+        .collect::<Vec<_>>();
+    frame.render_widget(block, area);
+    frame.render_widget(Paragraph::new(Text::from(visible)), inner);
 }

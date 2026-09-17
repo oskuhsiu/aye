@@ -134,6 +134,7 @@ fn list_navigation_changes_actual_detail_and_ctrl_h_returns() {
         oid: "d".repeat(40),
         state: s,
     });
+    app.mode = crate::app::Mode::List;
     assert_eq!(app.selected_id.as_deref(), Some(first.id.as_str()));
     key(&mut app, KeyCode::Char('j'));
     assert_eq!(app.selected_id.as_deref(), Some(second.id.as_str()));

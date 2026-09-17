@@ -172,7 +172,7 @@ impl App {
         self.recent
             .refresh(&self.snapshot.state, &self.snapshot.oid);
         self.recent.only.clear();
-        if !self.recent.enabled || self.history.is_some() {
+        if !self.recent.enabled || self.history.is_some() || self.focus_root.is_some() {
             return;
         }
         let existing: BTreeSet<_> = ids.iter().cloned().collect();
@@ -374,7 +374,7 @@ pub fn render_history(frame: &mut Frame, app: &mut App, area: Rect) {
 /// Paint a compact secondary region and return the remaining primary-pane area.
 /// Call only outside History; graph/list renderers consume graph_ids in that area.
 pub fn render_recent(frame: &mut Frame, app: &App, area: Rect) -> Rect {
-    if !app.recent.enabled || area.height < 6 {
+    if !app.recent.enabled || app.focus_root.is_some() || area.height < 6 {
         return area;
     }
     let height = 5.min(area.height / 2);
