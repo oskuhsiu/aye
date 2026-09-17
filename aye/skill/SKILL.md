@@ -13,6 +13,8 @@ format 1; use `aye <command> --help` to check available options.
 
 - **Everyday task work:** read [Common workflow](refs/common.md) first. It covers
   setup, finding work, acceptance cases, claims, notes, blockers and completion.
+- **Starting, resuming or cleaning up a worktree:** read
+  [Worktree context](refs/worktrees.md) to record and recover the task's checkout.
 - **Metadata, filtering or lifecycle changes:** read
   [Tasks and states](refs/tasks-and-states.md).
 - **Another clone, remote publication or a pending conflict:** read

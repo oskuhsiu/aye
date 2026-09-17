@@ -69,10 +69,15 @@ eight payload hex characters.
 
 ## Claim, work and finish
 
+For source work, inspect existing checkout notes before choosing or creating a
+worktree. Follow [Worktree context](worktrees.md) to verify the checkout and,
+after claiming, record its actual location before editing.
+
 ```sh
 aye --json claim TASK_ID
 aye --json note TASK_ID "Reproduced the failure; regression case fails as expected"
 # Implement the assigned work and run its checks.
+# Integrate and clean up task worktrees as required by the project; record evidence.
 aye --json close TASK_ID --note "Regression and focused checks pass; evidence: ..."
 ```
 
@@ -95,6 +100,9 @@ Verify `data.task.status == "closed"` and `data.task.resolution == "done"` in th
 reply. Completion does not commit source changes or publish task state remotely.
 
 ## Blocked or handing off
+
+Before releasing, deferring or blocking unfinished work, append progress,
+remaining checks and its retained [worktree context](worktrees.md).
 
 If a prerequisite is discovered while working:
 
@@ -123,7 +131,7 @@ use it when the prerequisite relationship is no longer required. Normal
 prerequisite completion needs no manual edge removal. A cancelled prerequisite
 continues to block its dependents.
 
-To hand off unfinished, unblocked work, append progress and remaining checks,
-then `aye --json release TASK_ID`. Use `defer` for deliberately postponed work;
-see [Tasks and states](tasks-and-states.md). Synchronize when remote handoff is
-intended and report any sync failure separately from local progress.
+For an unblocked handoff, use `aye --json release TASK_ID`. Use `defer` for
+deliberately postponed work; see [Tasks and states](tasks-and-states.md). Synchronize when
+remote handoff is intended and report any sync failure separately from local
+progress.

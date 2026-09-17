@@ -13,6 +13,7 @@ skill/
 |-- README.md                    This human guide
 `-- refs/
     |-- common.md                Everyday workflow, claims, blockers, completion
+    |-- worktrees.md             Checkout notes, interruption/resume and cleanup
     |-- tasks-and-states.md      Metadata, queries, relationships and lifecycle
     |-- sync-and-conflicts.md    Remote synchronization and conflict resolution
     |-- diagnostics.md          Errors, stale views and abandoned claims
@@ -63,6 +64,13 @@ Source changes, task completion and remote task publication are separate results
 The agent should record actual verification evidence before closing work as done.
 Local linked worktrees share claims immediately; independent clones need sync
 and can conflict. A normal source push does not publish tasks.
+
+For source work, the agent records the actual worktree root, branch and machine
+in task notes before editing. Those notes retain unfinished-work context across
+release, defer and blocking, so a later session can verify and reuse the right
+checkout. Completed task worktrees are cleaned up through the project's manager
+(for example hd), with verified cleanup appended to the task. This is agent
+workflow guidance; aye does not automatically associate or remove worktrees.
 
 Task data stays in Git objects reached through the custom `refs/agent-tasks/state`
 ref locally and remotely. It does not add task folders to your source tree or
