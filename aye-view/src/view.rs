@@ -61,10 +61,21 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     }
     frame.render_widget(
         Paragraph::new(
-            "Tab Graph/List · / Search · f Filter · Enter Detail · Esc Back · ? Help · q Quit",
+            "Tab Graph/List · / Search · f Filter · Enter Detail · Esc Back · r Refresh · ? Help · q Quit",
         ),
         chunks[2],
     );
+    if let Some(error) = &app.refresh_error {
+        frame.render_widget(Clear, chunks[2]);
+        frame.render_widget(
+            Paragraph::new(format!(
+                "! Showing last good state (r retry): {}",
+                sanitize(error).replace('\n', " ")
+            ))
+            .style(Style::default().fg(Color::Red)),
+            chunks[2],
+        );
+    }
     if app.help {
         render_help(frame);
     }
@@ -329,6 +340,6 @@ fn wrapped_lines(text: &str, width: usize) -> Vec<String> {
 fn render_help(frame: &mut Frame) {
     let area = frame.area();
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: Graph/List               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\n/ Search all tasks; ↑/↓ results, Enter reveal, Esc cancel\nf Filter: ↑/↓ field, ←/→ cycle, c clear draft, Enter apply\nSearch reveal ends on leaving the task or applying filters.\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nGraph arrows point from prerequisite to dependent. Tab opens List.")
+    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: Graph/List               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\nr: local refresh; shared state is checked every 500 ms\n/ Search all tasks; ↑/↓ results, Enter reveal, Esc cancel\nf Filter: ↑/↓ field, ←/→ cycle, c clear draft, Enter apply\nSearch reveal ends on leaving the task or applying filters.\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nGraph arrows point from prerequisite to dependent. Tab opens List.")
         .block(block("Help · ? or Esc to return",true)).wrap(ratatui::widgets::Wrap {trim:false}),area);
 }
