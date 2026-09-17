@@ -123,6 +123,7 @@ name = "aye-view"
 version = "0.1.0"
 dependencies = [
  "aye",
+ "chrono",
  "crossterm",
  "ratatui",
  "unicode-segmentation",

@@ -10,6 +10,8 @@ pub enum Pane {
 }
 
 pub struct App {
+    pub history: Option<crate::history::HistoryState>,
+    pub recent: crate::history::RecentState,
     pub query: crate::query::QueryState,
     pub snapshot: ReaderSnapshot,
     pub relations: Relations,
@@ -27,6 +29,8 @@ impl App {
     pub fn new(snapshot: ReaderSnapshot) -> Self {
         let visible_ids = current_ids(&snapshot.state);
         Self {
+            history: None,
+            recent: crate::history::RecentState::default(),
             query: crate::query::QueryState::default(),
             relations: Relations::new(&snapshot.state),
             selected_id: visible_ids.first().cloned(),
@@ -91,6 +95,9 @@ impl App {
             if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
                 self.help = false;
             }
+            return;
+        }
+        if self.handle_history_key(key) {
             return;
         }
         match key.code {

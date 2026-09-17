@@ -11,6 +11,7 @@ use ratatui::{
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
+    app.tick_clock();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -21,7 +22,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .split(frame.area());
     frame.render_widget(
         Paragraph::new(format!(
-            "aye-view · List · {} visible tasks{}{} · read-only",
+            "aye-view · {} · {} visible tasks{}{} · read-only",
+            if app.history.is_some() {
+                "History"
+            } else {
+                "List"
+            },
             app.visible_ids.len(),
             if app.query.filters.active() {
                 " · filtered"
@@ -42,16 +48,16 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
             .split(main);
-        render_list(frame, app, panes[0]);
+        render_main(frame, app, panes[0]);
         render_detail(frame, app, panes[1]);
     } else if app.pane == Pane::Detail {
         render_detail(frame, app, main);
     } else {
-        render_list(frame, app, main);
+        render_main(frame, app, main);
     }
     frame.render_widget(
         Paragraph::new(
-            "/ Search · f Filter · j/k ↑↓ Move · Enter Detail · Esc Back · ? Help · q Quit",
+            "/ Search · f Filter · c Recent · h History · ] Recent task · Enter Detail · Esc Back · ? Help · q Quit",
         ),
         chunks[2],
     );
@@ -70,9 +76,18 @@ fn block(title: &str, focused: bool) -> Block<'_> {
             Style::default()
         })
 }
+fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
+    if app.history.is_some() {
+        crate::history::render_history(frame, app, area);
+    } else {
+        let current = crate::history::render_recent(frame, app, area);
+        render_list(frame, app, current);
+    }
+}
 fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = block("List", app.pane == Pane::Main);
-    if app.visible_ids.is_empty() {
+    let ids = app.graph_ids();
+    if ids.is_empty() {
         frame.render_widget(
             Paragraph::new(if app.query.filters.active() {
                 "No tasks match filters. f opens filters; c clears, Enter applies."
@@ -85,8 +100,7 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
         );
         return;
     }
-    let items = app
-        .visible_ids
+    let items = ids
         .iter()
         .map(|id| {
             let t = &app.snapshot.state.tasks[id];
@@ -104,7 +118,7 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let selected = app
         .selected_id
         .as_ref()
-        .and_then(|id| app.visible_ids.iter().position(|v| v == id));
+        .and_then(|id| ids.iter().position(|v| v == id));
     let mut state = ListState::default()
         .with_offset(app.list_offset)
         .with_selected(selected);
@@ -279,6 +293,6 @@ fn wrapped_lines(text: &str, width: usize) -> Vec<String> {
 fn render_help(frame: &mut Frame) {
     let area = frame.area();
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: switch pane               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\n/ Search all tasks; ↑/↓ results, Enter reveal, Esc cancel\nf Filter: ↑/↓ field, ←/→ cycle, c clear draft, Enter apply\nSearch reveal ends on leaving the task or applying filters.\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nThis foundation opens in List; further modes arrive separately.")
+    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: switch pane               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\n/ Search all tasks; ↑/↓ results, Enter reveal, Esc cancel\nf Filter: ↑/↓ field, ←/→ cycle, c clear draft, Enter apply\nSearch reveal ends on leaving the task or applying filters.\nc: Recent 24h toggle; ]: next task in the secondary region\nh: all closed History; Esc: return (from Detail, press twice)\nHistory respects filters; arrows/PgUp/PgDown load more rows.\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nThis foundation opens in List; further modes arrive separately.")
         .block(block("Help · ? or Esc to return",true)).wrap(ratatui::widgets::Wrap {trim:false}),area);
 }

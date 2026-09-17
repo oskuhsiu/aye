@@ -121,8 +121,11 @@ impl App {
             .as_ref()
             .and_then(|id| self.visible_ids.iter().position(|value| value == id))
             .unwrap_or(0);
+        let history_ids = self.history_candidates();
         let state = &self.snapshot.state;
-        let mut ids = if matches!(
+        let mut ids = if let Some(ids) = history_ids {
+            ids
+        } else if matches!(
             self.query.filters.state.as_deref(),
             Some("closed" | "closed(done)" | "closed(cancelled)")
         ) {
@@ -131,7 +134,10 @@ impl App {
             current_ids(state)
         };
         ids.retain(|id| self.query.filters.matches(state, &state.tasks[id]));
+        self.add_recent(&mut ids);
+        let state = &self.snapshot.state;
         if let Some(id) = &self.query.revealed_id {
+            self.recent.only.remove(id);
             if state.tasks.contains_key(id) {
                 if !ids.contains(id) {
                     ids.push(id.clone());
@@ -140,7 +146,9 @@ impl App {
                 self.query.revealed_id = None;
             }
         }
-        sort_ids(state, &mut ids);
+        if self.history.is_none() {
+            sort_ids(state, &mut ids);
+        }
         self.selected_id = previous.clone().filter(|id| ids.contains(id)).or_else(|| {
             ids.get(previous_index.min(ids.len().saturating_sub(1)))
                 .cloned()
@@ -198,6 +206,7 @@ impl App {
                 KeyCode::Up => search.selected = search.selected.saturating_sub(1),
                 KeyCode::Enter => {
                     if let Some(id) = search.results.get(search.selected).cloned() {
+                        self.close_history();
                         self.query.revealed_id = Some(id.clone());
                         self.refresh_visible();
                         self.select(&id);

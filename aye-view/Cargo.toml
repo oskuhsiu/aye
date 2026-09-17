@@ -9,3 +9,4 @@ aye = { path = "../aye" }
 ratatui = "0.30.2"
 crossterm = "0.29"
 unicode-segmentation = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
