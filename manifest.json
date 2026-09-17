@@ -2,12 +2,12 @@
   "counts": {
     "blocked": 0,
     "closed_cancelled": 0,
-    "closed_done": 8,
+    "closed_done": 9,
     "deferred": 0,
-    "in_progress": 2,
+    "in_progress": 1,
     "ready": 0,
     "total": 10
   },
   "projection_version": 1,
-  "tasks_tree_oid": "de2434d2b273b70c92e4f7a722c9ebb1c6c2a55c"
+  "tasks_tree_oid": "ed40db626fc388a1a469a123e90bd81d02f1cee5"
 }
