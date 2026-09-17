@@ -1,0 +1,11 @@
+[package]
+name = "aye-view"
+version = "0.1.0"
+edition = "2024"
+description = "Read-only terminal explorer for shared aye tasks"
+
+[dependencies]
+aye = { path = "../aye" }
+ratatui = "0.30.2"
+crossterm = "0.29"
+unicode-segmentation = "1"
