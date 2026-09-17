@@ -1,0 +1,37 @@
+# Logs and operating-system metadata.
+*.log
+*.log.*
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Desktop.ini
+
+# Local agent instructions and handoff files (owner's prior preference).
+/AGENTS.md
+/ARCHITECTURE.md
+/handoff.md
+/CLAUDE.md
+/.agents/
+/.codex/
+/.claude/
+
+# Local drafts, investigation history, and generated verification evidence.
+# Keep durable user guidance in docs/faq.md and decisions in docs/adr/.
+/docs/
+/doc/
+/plan/
+/plans/
+.herdr/
+
+# Rust build products. Cargo.lock is tracked for this executable.
+/target/
+**/*.rs.bk
+*.pdb
+
+# Disposable integration-test repositories and evidence.
+/test/
+/tests/
+.test-data/
+__pycache__/
