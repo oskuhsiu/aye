@@ -3,9 +3,9 @@
 ## Summary
 
 - total: 10
-- ready: 1
+- ready: 0
 - blocked: 0
-- in_progress: 1
+- in_progress: 2
 - deferred: 0
 - closed_done: 8
 - closed_cancelled: 0
@@ -13,10 +13,11 @@
 ## In Progress
 
 - t-6b5ac7001417cb61ed63 [P2] Synchronize task state through custom remote refs — claimed by codex\-main
+- t-84ad72731317413e7b58 [P2] Verify live GitHub task synchronization — claimed by github\-verifier
 
 ## Ready
 
-- t-84ad72731317413e7b58 [P2] Verify live GitHub task synchronization
+None.
 
 ## Blocked
 
