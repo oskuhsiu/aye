@@ -5,14 +5,14 @@
 - total: 10
 - ready: 0
 - blocked: 0
-- in_progress: 1
+- in_progress: 0
 - deferred: 0
-- closed_done: 9
+- closed_done: 10
 - closed_cancelled: 0
 
 ## In Progress
 
-- t-6b5ac7001417cb61ed63 [P2] Synchronize task state through custom remote refs — claimed by codex\-main
+None.
 
 ## Ready
 
@@ -28,6 +28,7 @@ None.
 
 ## Last 20 Closed
 
+- t-6b5ac7001417cb61ed63 [P2] Synchronize task state through custom remote refs — done
 - t-84ad72731317413e7b58 [P2] Verify live GitHub task synchronization — done
 - t-7d680499e07b7b6e9521 [P2] Verify v1 end\-to\-end and document installed workflow — done
 - t-1ec83b8b16ae39bf6982 [P2] Implement explicit sync and conflict resolution — done
