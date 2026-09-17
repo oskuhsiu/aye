@@ -2,8 +2,8 @@
 
 ## Summary
 
-- total: 9
-- ready: 0
+- total: 10
+- ready: 1
 - blocked: 0
 - in_progress: 1
 - deferred: 0
@@ -16,7 +16,7 @@
 
 ## Ready
 
-None.
+- t-84ad72731317413e7b58 [P2] Verify live GitHub task synchronization
 
 ## Blocked
 
