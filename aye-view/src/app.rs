@@ -17,6 +17,8 @@ pub enum Mode {
 }
 
 pub struct App {
+    pub history: Option<crate::history::HistoryState>,
+    pub recent: crate::history::RecentState,
     pub query: crate::query::QueryState,
     pub mode: Mode,
     pub graph: Graph,
@@ -42,6 +44,8 @@ impl App {
     pub fn new(snapshot: ReaderSnapshot) -> Self {
         let visible_ids = current_ids(&snapshot.state);
         Self {
+            history: None,
+            recent: crate::history::RecentState::default(),
             query: crate::query::QueryState::default(),
             mode: Mode::Graph,
             graph: Graph::new(&snapshot.state, &visible_ids),
@@ -65,9 +69,10 @@ impl App {
         }
     }
     pub fn ensure_graph(&mut self) {
-        if self.graph_key.0 != self.snapshot.oid || self.graph_key.1 != self.visible_ids {
-            self.graph = Graph::new(&self.snapshot.state, &self.visible_ids);
-            self.graph_key = (self.snapshot.oid.clone(), self.visible_ids.clone());
+        let ids = self.graph_ids();
+        if self.graph_key.0 != self.snapshot.oid || self.graph_key.1 != ids {
+            self.graph = Graph::new(&self.snapshot.state, &ids);
+            self.graph_key = (self.snapshot.oid.clone(), ids);
             self.graph_anchor = None;
         }
     }
@@ -166,6 +171,9 @@ impl App {
             if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
                 self.help = false;
             }
+            return;
+        }
+        if self.handle_history_key(key) {
             return;
         }
         match key.code {
