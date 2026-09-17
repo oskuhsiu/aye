@@ -20,8 +20,9 @@ args = parser.parse_args()
 assert git(ROOT, 'remote', 'get-url', 'origin') == args.repository_url
 
 def source_snapshot():
+    index = Path(git(ROOT, 'rev-parse', '--path-format=absolute', '--git-path', 'index'))
     return (git(ROOT, 'rev-parse', 'HEAD'), git(ROOT, 'symbolic-ref', 'HEAD'),
-            git(ROOT, 'status', '--porcelain'), (ROOT / '.git/index').read_bytes(),
+            git(ROOT, 'status', '--porcelain'), index.read_bytes(),
             git(ROOT, 'config', '--local', '--list'))
 
 def aye(cwd, *args, actor='github-verifier', error=None):

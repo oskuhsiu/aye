@@ -21,17 +21,17 @@ Desktop.ini
 # Keep durable user guidance in docs/faq.md and decisions in docs/adr/.
 /docs/
 /doc/
-/plan/
-/plans/
+plan/
+plans/
 .herdr/
 
 # Rust build products. Cargo.lock is tracked for this executable.
-/target/
+target/
 **/*.rs.bk
 *.pdb
 
 # Disposable integration-test repositories and evidence.
-/test/
-/tests/
+test/
+tests/
 .test-data/
 __pycache__/
