@@ -58,6 +58,11 @@ aye(clone, 'close', task)
 aye(clone, 'sync')
 aye(ROOT, 'sync')
 assert aye(ROOT, 'show', task)['task']['resolution'] == 'done'
+remote_tip = git(ROOT, 'ls-remote', '--refs', 'origin', 'refs/agent-tasks/state').split()[0]
+assert remote_tip == git(ROOT, 'rev-parse', 'refs/agent-tasks/state')
+assert 'refs/heads/agent-tasks' not in git(ROOT, 'ls-remote', '--heads', 'origin')
+assert 'origin/agent-tasks' not in git(ROOT, 'branch', '-a')
+assert not (clone / 'tasks').exists() and not (clone / 'views').exists()
 assert git(ROOT, 'rev-parse', 'refs/agent-tasks/state') == git(clone, 'rev-parse', 'refs/agent-tasks/state')
 aye(ROOT, 'doctor')
 assert before == source_snapshot()

@@ -1,5 +1,8 @@
 # aye v0.1.0 verification — 2026-09-17
 
+Historical release evidence. Remote transport was superseded in v0.2.0; see
+[CUSTOM_REFS.md](CUSTOM_REFS.md) for current custom-ref verification.
+
 Test cases preceded implementation. The local bootstrap passed five installed-CLI
 cases and six unit tests before creating the remaining five development tasks.
 Subsequent implementation used aye claims, notes, blocking, and completion.

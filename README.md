@@ -24,7 +24,7 @@ live in ignored `test/`; executable checks are tracked in `verification/`.
 Run inside any Git worktree, including nested directories:
 
 ```sh
-aye init                  # adopts an existing remote agent-tasks branch
+aye init                  # adopts existing remote refs/agent-tasks/state
 aye config actor agent-a  # this worktree only
 aye sync                  # explicit remote fetch/reconcile/push
 aye ready --json
@@ -87,18 +87,44 @@ history. Filter the source branch to view only source commits. Tests clone a
 source branch and verify that initialization never checks out task metadata.
 
 `FORMAT.md`, `manifest.json`, `views/ready.jsonl`, `views/active.jsonl`, and `REPORT.md`
-are generated in task state. To read without aye, open remote branch `agent-tasks`,
-then read `FORMAT.md` and the views. Valid external JSON edits can make views stale:
+are generated in task state. Both local and remote state use the custom ref
+`refs/agent-tasks/state`; fetched remote snapshots use
+`refs/agent-tasks/remotes/<remote>/state`. Ordinary clone/fetch normally omits custom
+refs, so `aye init` and `aye sync` fetch the exact ref explicitly. To inspect files:
+
+```sh
+git fetch origin refs/agent-tasks/state:refs/agent-tasks/remotes/origin/state
+git show refs/agent-tasks/remotes/origin/state:FORMAT.md
+git show refs/agent-tasks/remotes/origin/state:views/ready.jsonl
+```
+
+GitHub does not expose `<repository>/.git/` as an HTTP filesystem. API clients
+use Git database matching-refs with exact-name filtering, then commits, trees and
+blobs; see [the Git/API reading instructions](src/FORMAT.md#reading-through-git-or-api).
+Browser-only Agents are outside the supported scope. Valid external JSON edits can
+make views stale:
 reads warn and recompute without committing. `aye rebuild` repairs generated data
 without changing canonical bytes. `aye doctor` checks canonical integrity and view
 freshness, with warnings for large tasks, cancelled prerequisites, and closed
 parents with open children.
 
 A normal source `git push` keeps its existing behavior. `aye sync` explicitly fetches
-and normally pushes only the fixed `agent-tasks` branch. Remote selection is a
+and normally pushes only the fixed `refs/agent-tasks/state` custom ref. Remote selection is a
 configured task remote, then `origin`, then the sole Git remote, otherwise local-only.
-Remote task branch protection must allow direct ordinary pushes and merge commits.
+The host must permit access and normal pushes to that custom ref. GitHub branch
+pages/protection are not the custom-ref interface; repository permissions still
+apply. Private-repository API readers need Contents read permission; public reads can be anonymous. Custom refs are not
+a secret store. Backups must explicitly include custom refs and their objects.
+No legacy task branch is automatically adopted, created, or used as fallback.
 The tool never force-pushes or changes source push settings/hooks.
+
+When upgrading from 0.1, upgrade all writers before retiring the legacy branch.
+Preserve and reconcile the old branch tip, verify the custom ref by explicit fetch
+and API read, then remove the old branch with an expected-tip guard. `aye sync`
+does not silently migrate or delete it. See [migration cases](verification/CUSTOM_REFS.md).
+To back up local task history explicitly, use
+`git bundle create <backup-path> refs/agent-tasks/state`; ordinary source clone alone
+is not a complete task backup.
 
 Different-task remote changes merge automatically. Different edits to the same
 canonical task conflict, even when they affect different fields. Cross-file graph
@@ -117,13 +143,16 @@ aye resolve --abort
 
 Choose a resolution for every listed task. The pending snapshots remain reachable
 through Git refs even across garbage collection. Remote project mismatch, invalid
-canonical data, and deletion of a previously observed task branch fail safely.
+canonical data, and deletion of a previously observed custom task ref fail safely. Observations are
+scoped by remote plus ref. Pending resolutions record the target `remote_ref`;
+legacy or mismatched pending state cannot continue against the new target. Abort
+obsolete pending resolution before starting a fresh sync.
 `MISSING_HISTORY` means the task histories lack an available merge base; obtain
 complete task history and retry. There is no distributed claim lock across clones.
 
 ## Development evidence
 
-The implementation follows specification v0.3.1. Behavior cases and milestones
+Release 0.2.0 follows specification v0.3.2; canonical project format and task schema remain version 1. Behavior cases and milestones
 are in [verification/CASES.md](verification/CASES.md). A tested local bootstrap
 created the remaining development tasks in its own shared state; subsequent work
 used claims, notes, blocking, completion, and reopen where verification found bugs.

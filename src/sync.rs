@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
-const REMOTE_REF: &str = "refs/heads/agent-tasks";
+const REMOTE_REF: &str = "refs/agent-tasks/state";
 const RETRIES: usize = 8;
 
 pub fn remote(store: &Store) -> Result<Option<String>> {
@@ -42,7 +42,7 @@ pub fn configure_remote(store: &Store, value: Option<&str>) -> Result<Value> {
         store.ensure_writable()?;
         atomic_write(&store.metadata().join("remote"), value.as_bytes())?;
     }
-    Ok(json!({"remote": remote(store)?}))
+    Ok(json!({"remote": remote(store)?, "remote_ref": REMOTE_REF}))
 }
 
 fn observed(store: &Store) -> Result<BTreeMap<String, String>> {
@@ -53,10 +53,13 @@ fn observed(store: &Store) -> Result<BTreeMap<String, String>> {
         Ok(BTreeMap::new())
     }
 }
+fn observation_key(name: &str) -> String {
+    format!("{name}:{REMOTE_REF}")
+}
 fn remember(store: &Store, name: &str, oid: &str) -> Result<()> {
     let _lock = store.lock()?;
     let mut map = observed(store)?;
-    map.insert(name.into(), oid.into());
+    map.insert(observation_key(name), oid.into());
     atomic_write(
         &store.metadata().join("sync-observed.json"),
         &json_bytes(&map)?,
@@ -77,7 +80,9 @@ fn ancestor(store: &Store, a: &str, b: &str) -> Result<bool> {
 pub fn status(store: &Store) -> Result<Value> {
     let name = remote(store)?;
     let known = observed(store)?;
-    let fetched = name.as_ref().and_then(|name| known.get(name));
+    let fetched = name
+        .as_ref()
+        .and_then(|name| known.get(&observation_key(name)));
     let local = store.tip(STATE_REF)?;
     let relation = match (local.as_deref(), fetched) {
         (Some(l), Some(r)) if l == r => "equal",
@@ -86,8 +91,10 @@ pub fn status(store: &Store) -> Result<Value> {
         (Some(_), Some(_)) => "diverged",
         _ => "unknown",
     };
-    Ok(json!({"remote": name, "last_fetched_remote_oid": fetched,
-        "sync_status": relation, "pending_conflict": store.conflict_path().exists()}))
+    Ok(
+        json!({"remote": name, "remote_ref": REMOTE_REF, "last_fetched_remote_oid": fetched,
+        "sync_status": relation, "pending_conflict": store.conflict_path().exists()}),
+    )
 }
 
 fn fetch(store: &Store, name: &str) -> Result<Option<Snapshot>> {
@@ -99,10 +106,10 @@ fn fetch(store: &Store, name: &str) -> Result<Option<Snapshot>> {
         ));
     }
     if listing.stdout.is_empty() {
-        if observed(store)?.contains_key(name) {
+        if observed(store)?.contains_key(&observation_key(name)) {
             return Err(Error::new(
                 "REMOTE_STATE_DELETED",
-                "Previously observed remote task branch was deleted; refusing automatic recreation",
+                "Previously observed remote task ref was deleted; refusing automatic recreation",
             ));
         }
         return Ok(None);
@@ -132,10 +139,15 @@ fn fetch(store: &Store, name: &str) -> Result<Option<Snapshot>> {
         let oid = store
             .tip(&destination)?
             .ok_or_else(|| Error::new("REMOTE_UNAVAILABLE", "Fetch produced no task tip"))?;
+        if store.git(&["cat-file", "-t", &oid], None)? != "commit" {
+            return Err(Error::new(
+                "STATE_CORRUPT",
+                "Remote task ref must point directly to a commit",
+            ));
+        }
         let snapshot = store.load(&oid)?;
-        // Keep a conventional tracking ref so fetched ancestry remains reachable
-        // for later status, merge-base, and pending conflict inspection.
-        let tracking = format!("refs/remotes/{name}/agent-tasks");
+        // Keep fetched ancestry reachable without exposing it as a source branch.
+        let tracking = format!("refs/agent-tasks/remotes/{name}/state");
         store.git(&["update-ref", "--create-reflog", &tracking, &oid], None)?;
         remember(store, name, &oid)?;
         Ok(Some(snapshot))
@@ -186,7 +198,7 @@ pub fn initialize(store: &Store, offline: bool) -> Result<Value> {
         }
         let state = store.head()?;
         return Ok(
-            json!({"project_id": state.state.project.project_id, "state_oid": state.oid, "adopted": true}),
+            json!({"project_id": state.state.project.project_id, "state_oid": state.oid, "adopted": true, "remote_ref": REMOTE_REF}),
         );
     }
     let snapshot = store.initialize_offline()?;
@@ -196,6 +208,8 @@ pub fn initialize(store: &Store, offline: bool) -> Result<Value> {
 #[derive(Serialize, Deserialize)]
 struct Pending {
     remote_name: String,
+    #[serde(default = "legacy_remote_ref")]
+    remote_ref: String,
     base: String,
     local: String,
     remote: String,
@@ -203,6 +217,9 @@ struct Pending {
     conflicts: BTreeSet<String>,
     resolutions: BTreeMap<String, Option<Vec<u8>>>,
     validation_error: Option<String>,
+}
+fn legacy_remote_ref() -> String {
+    "refs/heads/agent-tasks".into()
 }
 fn pin_conflict(store: &Store, pending: &Pending) -> Result<()> {
     let input = format!(
@@ -267,6 +284,7 @@ fn reconciliation(
     if !conflicts.is_empty() {
         return Ok(Err(Pending {
             remote_name: name.into(),
+            remote_ref: REMOTE_REF.into(),
             base,
             local: local.oid.clone(),
             remote: remote.oid.clone(),
@@ -291,7 +309,9 @@ pub fn sync(store: &Store) -> Result<Value> {
         Some(name) => name,
         None => {
             let state = store.rebuild()?;
-            return Ok(json!({"remote": null, "status": "local_only", "state_oid": state.oid}));
+            return Ok(
+                json!({"remote": null, "remote_ref": REMOTE_REF, "status": "local_only", "state_oid": state.oid}),
+            );
         }
     };
     let mut last_push_error = String::new();
@@ -336,7 +356,9 @@ pub fn sync(store: &Store) -> Result<Value> {
             continue;
         }
         if remote.as_ref().is_some_and(|remote| remote.oid == desired) {
-            return Ok(json!({"remote": name, "status": "synchronized", "state_oid": desired}));
+            return Ok(
+                json!({"remote": name, "remote_ref": REMOTE_REF, "status": "synchronized", "state_oid": desired}),
+            );
         }
         // Push the validated snapshot OID, not a moving local ref. Ordinary push
         // enforces remote ancestry even when another clone wins after fetch.
@@ -344,11 +366,13 @@ pub fn sync(store: &Store) -> Result<Value> {
         let output = store.raw(&["push", "--porcelain", &name, &refspec], None)?;
         if output.status.success() {
             remember(store, &name, &desired)?;
-            return Ok(json!({"remote": name, "status": "synchronized", "state_oid": desired}));
+            return Ok(
+                json!({"remote": name, "remote_ref": REMOTE_REF, "status": "synchronized", "state_oid": desired}),
+            );
         }
         last_push_error = String::from_utf8_lossy(&output.stderr).into_owned();
         // Fetch/reconcile after rejection, including receive-hook rejection.
-        // Bounded retries also report servers that prohibit direct branch pushes.
+        // Bounded retries also report servers that prohibit direct task-ref pushes.
     }
     Err(Error::new(
         "REMOTE_PUSH_REJECTED",
@@ -390,6 +414,15 @@ pub fn resolve(
         return Ok(json!({"aborted": true}));
     }
     if continue_ {
+        if pending.remote_ref != REMOTE_REF {
+            return Err(Error::new(
+                "SYNC_PROTOCOL_MISMATCH",
+                format!(
+                    "Pending conflict targets {}; this version syncs {}. Inspect or abort the legacy conflict before syncing again",
+                    pending.remote_ref, REMOTE_REF
+                ),
+            ));
+        }
         if pending
             .conflicts
             .iter()
@@ -470,7 +503,7 @@ pub fn resolve(
             };
             return Ok(
                 json!({"id": conflict_id(&path), "base": decode(&base.files)?, "local": decode(&local.files)?,
-                "remote": decode(&remote.files)?, "resolved": pending.resolutions.contains_key(&path)}),
+                "remote": decode(&remote.files)?, "remote_ref": pending.remote_ref, "resolved": pending.resolutions.contains_key(&path)}),
             );
         }
         let bytes = if let Some(file) = file {
@@ -502,6 +535,6 @@ pub fn resolve(
     Ok(
         json!({"conflicts": pending.conflicts.iter().map(|path| json!({"id": conflict_id(path),
         "resolved": pending.resolutions.contains_key(path)})).collect::<Vec<_>>(),
-        "validation_error": pending.validation_error, "local_oid": pending.local, "remote_oid": pending.remote}),
+        "remote_ref": pending.remote_ref, "validation_error": pending.validation_error, "local_oid": pending.local, "remote_oid": pending.remote}),
     )
 }

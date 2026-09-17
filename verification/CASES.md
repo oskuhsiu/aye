@@ -1,5 +1,8 @@
 # Behavior-first acceptance cases
 
+The current custom-ref transport is covered by [CUSTOM_REFS.md](CUSTOM_REFS.md).
+The bootstrap sequence below records the original development order.
+
 Cases are specified before their implementation. Tests use the installed `aye`
 binary (`cargo install --path . --force`) and disposable repositories under
 `test/`; compilation and installation use Cargo's defaults.

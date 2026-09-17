@@ -7,7 +7,7 @@ import unittest
 from check import RepositoryCase, git, run, AYE
 
 REF = 'refs/agent-tasks/state'
-REMOTE = 'refs/heads/agent-tasks'
+REMOTE = REF
 
 def path(task):
     return f'tasks/{task[2:4]}/{task}.json'
@@ -45,7 +45,7 @@ class SyncCases(RepositoryCase):
         self.assertEqual('+refs/heads/source:refs/remotes/origin/source',
                          git(self.other, 'config', '--get-all', 'remote.origin.fetch'))
         self.assertEqual('', git(self.other, 'for-each-ref', '--format=%(refname)',
-                                 'refs/remotes/origin/agent-tasks'))
+                                 'refs/agent-tasks/remotes/origin/state'))
         git(self.other, 'config', 'user.name', 'Test User')
         git(self.other, 'config', 'user.email', 'test@example.invalid')
         self.aye('init', cwd=self.other)
@@ -141,7 +141,7 @@ class SyncCases(RepositoryCase):
     def test_pending_conflict_survives_gc_without_tracking_ref(self):
         task = self.conflict()
         # Ordinary fetch/prune can replace tracking refs while resolution waits.
-        git(self.repo, 'update-ref', '-d', 'refs/remotes/origin/agent-tasks')
+        git(self.repo, 'update-ref', '-d', 'refs/agent-tasks/remotes/origin/state')
         git(self.repo, 'reflog', 'expire', '--expire=now', '--all')
         git(self.repo, 'gc', '--prune=now')
         detail = self.aye('resolve', task)
