@@ -21,8 +21,18 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         .split(frame.area());
     frame.render_widget(
         Paragraph::new(format!(
-            "aye-view · List · {} current tasks · read-only",
-            app.visible_ids.len()
+            "aye-view · List · {} visible tasks{}{} · read-only",
+            app.visible_ids.len(),
+            if app.query.filters.active() {
+                " · filtered"
+            } else {
+                ""
+            },
+            if app.query.revealed_id.is_some() {
+                " · search reveal"
+            } else {
+                ""
+            }
         )),
         chunks[0],
     );
@@ -40,12 +50,15 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         render_list(frame, app, main);
     }
     frame.render_widget(
-        Paragraph::new("j/k ↑↓ Move · Enter Detail · Esc Back · PgUp/Dn Scroll · ? Help · q Quit"),
+        Paragraph::new(
+            "/ Search · f Filter · j/k ↑↓ Move · Enter Detail · Esc Back · ? Help · q Quit",
+        ),
         chunks[2],
     );
     if app.help {
         render_help(frame);
     }
+    crate::query::render(frame, app);
 }
 fn block(title: &str, focused: bool) -> Block<'_> {
     Block::default()
@@ -61,9 +74,13 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = block("List", app.pane == Pane::Main);
     if app.visible_ids.is_empty() {
         frame.render_widget(
-            Paragraph::new("No current tasks. Create work with aye create <title>.")
-                .block(block)
-                .wrap(ratatui::widgets::Wrap { trim: false }),
+            Paragraph::new(if app.query.filters.active() {
+                "No tasks match filters. f opens filters; c clears, Enter applies."
+            } else {
+                "No current tasks. Create work with aye create <title>."
+            })
+            .block(block)
+            .wrap(ratatui::widgets::Wrap { trim: false }),
             area,
         );
         return;
@@ -262,6 +279,6 @@ fn wrapped_lines(text: &str, width: usize) -> Vec<String> {
 fn render_help(frame: &mut Frame) {
     let area = frame.area();
     frame.render_widget(Clear, area);
-    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: switch pane               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nThis foundation opens in List; further modes arrive separately.")
+    frame.render_widget(Paragraph::new("j/k or ↑/↓: select task; scroll when Detail focused\nEnter / l / →: focus Detail     Esc / ← / Ctrl-h: return\nTab: switch pane               PgUp/PgDown: scroll Detail\n?: toggle Help                 q / Ctrl-c: quit\n/ Search all tasks; ↑/↓ results, Enter reveal, Esc cancel\nf Filter: ↑/↓ field, ←/→ cycle, c clear draft, Enter apply\nSearch reveal ends on leaving the task or applying filters.\n\n● ready   ▶ in progress   ! blocked   ⏸ deferred\n✓ completed   × cancelled (does not satisfy a dependency)\n\nDependency direction B → A means A depends on B.\nB completion unlocks A. Parent/discovery are detail context.\n\nCurrent List includes closed prerequisite ancestors.\nThis foundation opens in List; further modes arrive separately.")
         .block(block("Help · ? or Esc to return",true)).wrap(ratatui::widgets::Wrap {trim:false}),area);
 }

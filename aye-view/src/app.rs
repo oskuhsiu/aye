@@ -10,6 +10,7 @@ pub enum Pane {
 }
 
 pub struct App {
+    pub query: crate::query::QueryState,
     pub snapshot: ReaderSnapshot,
     pub relations: Relations,
     pub visible_ids: Vec<String>,
@@ -26,6 +27,7 @@ impl App {
     pub fn new(snapshot: ReaderSnapshot) -> Self {
         let visible_ids = current_ids(&snapshot.state);
         Self {
+            query: crate::query::QueryState::default(),
             relations: Relations::new(&snapshot.state),
             selected_id: visible_ids.first().cloned(),
             snapshot,
@@ -40,6 +42,15 @@ impl App {
         }
     }
     pub fn select(&mut self, id: &str) {
+        if self
+            .query
+            .revealed_id
+            .as_deref()
+            .is_some_and(|revealed| revealed != id)
+        {
+            self.query.revealed_id = None;
+            self.refresh_visible();
+        }
         if self.snapshot.state.tasks.contains_key(id) && self.selected_id.as_deref() != Some(id) {
             self.selected_id = Some(id.into());
             self.detail_scroll = 0;
@@ -65,9 +76,14 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
-        if key.code == KeyCode::Char('q')
-            || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
-        {
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.quit = true;
+            return;
+        }
+        if self.handle_query_key(key) {
+            return;
+        }
+        if key.code == KeyCode::Char('q') {
             self.quit = true;
             return;
         }
@@ -78,6 +94,8 @@ impl App {
             return;
         }
         match key.code {
+            KeyCode::Char('/') => self.open_search(),
+            KeyCode::Char('f') => self.open_filters(),
             KeyCode::Char('?') => self.help = true,
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.pane = Pane::Detail,
             KeyCode::Esc | KeyCode::Left | KeyCode::Backspace => self.pane = Pane::Main,
