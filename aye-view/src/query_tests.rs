@@ -347,3 +347,40 @@ fn released_search_key_does_not_type_or_quit() {
         panic!("search stays open");
     }
 }
+
+#[test]
+fn graph_query_integration_reveals_search_and_removes_filtered_edges() {
+    let mut app = fixture();
+    app.snapshot.state.tasks.get_mut(&id(3)).unwrap().depends_on = vec![id(1)];
+    app.snapshot.oid = "b".repeat(40);
+    app.snapshot.state.validate().unwrap();
+    frame(&mut app, 180, 30);
+    assert!(
+        app.graph
+            .edges
+            .iter()
+            .any(|e| e.prerequisite == id(1) && e.dependent == id(3))
+    );
+    app.query.filters.state = Some("blocked".into());
+    app.refresh_visible();
+    frame(&mut app, 180, 30);
+    assert_eq!(
+        app.graph.nodes.keys().cloned().collect::<Vec<_>>(),
+        vec![id(3)]
+    );
+    assert!(app.graph.edges.is_empty());
+    app.query.filters = Filters::default();
+    app.refresh_visible();
+    key(&mut app, KeyCode::Char('/'));
+    type_text(&mut app, "historical");
+    key(&mut app, KeyCode::Enter);
+    let text = frame(&mut app, 180, 30);
+    assert_eq!(app.selected_id, Some(id(5)));
+    assert!(app.graph.nodes.contains_key(&id(5)));
+    assert!(text.contains("Historical UNIQUE archive"));
+    app.query.revealed_id = None;
+    app.query.filters.label = Some("not-present".into());
+    app.refresh_visible();
+    assert!(frame(&mut app, 180, 30).contains("No tasks match filters"));
+    assert!(app.graph.nodes.is_empty());
+}

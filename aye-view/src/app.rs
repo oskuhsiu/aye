@@ -1,4 +1,5 @@
 //! Transient application state and keyboard reducer shared by the terminal and tests.
+use crate::graph::{Graph, Viewport};
 use crate::model::{Relations, current_ids};
 use aye::reader::ReaderSnapshot;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -9,8 +10,20 @@ pub enum Pane {
     Detail,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    Graph,
+    List,
+}
+
 pub struct App {
     pub query: crate::query::QueryState,
+    pub mode: Mode,
+    pub graph: Graph,
+    pub graph_viewport: Viewport,
+    graph_key: (String, Vec<String>),
+    pub graph_anchor: Option<String>,
+    pub graph_size: (u16, u16),
     pub snapshot: ReaderSnapshot,
     pub relations: Relations,
     pub visible_ids: Vec<String>,
@@ -28,6 +41,12 @@ impl App {
         let visible_ids = current_ids(&snapshot.state);
         Self {
             query: crate::query::QueryState::default(),
+            mode: Mode::Graph,
+            graph: Graph::new(&snapshot.state, &visible_ids),
+            graph_key: (snapshot.oid.clone(), visible_ids.clone()),
+            graph_viewport: Viewport::default(),
+            graph_anchor: None,
+            graph_size: (0, 0),
             relations: Relations::new(&snapshot.state),
             selected_id: visible_ids.first().cloned(),
             snapshot,
@@ -39,6 +58,13 @@ impl App {
             list_offset: 0,
             help: false,
             quit: false,
+        }
+    }
+    pub fn ensure_graph(&mut self) {
+        if self.graph_key.0 != self.snapshot.oid || self.graph_key.1 != self.visible_ids {
+            self.graph = Graph::new(&self.snapshot.state, &self.visible_ids);
+            self.graph_key = (self.snapshot.oid.clone(), self.visible_ids.clone());
+            self.graph_anchor = None;
         }
     }
     pub fn select(&mut self, id: &str) {
@@ -103,11 +129,12 @@ impl App {
                 self.pane = Pane::Main
             }
             KeyCode::Tab => {
-                self.pane = if self.pane == Pane::Main {
-                    Pane::Detail
+                self.mode = if self.mode == Mode::Graph {
+                    Mode::List
                 } else {
-                    Pane::Main
-                }
+                    Mode::Graph
+                };
+                self.pane = Pane::Main;
             }
             KeyCode::PageDown if self.pane == Pane::Detail => {
                 self.detail_scroll = self

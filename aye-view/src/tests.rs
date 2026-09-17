@@ -44,6 +44,7 @@ fn app() -> App {
 #[test]
 fn actual_input_render_details_scroll_and_narrow() {
     let mut app = app();
+    app.mode = crate::app::Mode::List;
     let wide = frame(&mut app, 110, 25);
     assert!(wide.contains("Unicode 中文"));
     assert!(wide.contains("Detail"));
