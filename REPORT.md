@@ -2,8 +2,8 @@
 
 ## Summary
 
-- total: 8
-- ready: 0
+- total: 9
+- ready: 1
 - blocked: 0
 - in_progress: 0
 - deferred: 0
@@ -16,7 +16,7 @@ None.
 
 ## Ready
 
-None.
+- t-6b5ac7001417cb61ed63 [P2] Synchronize task state through custom remote refs
 
 ## Blocked
 
