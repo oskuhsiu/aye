@@ -1,0 +1,13 @@
+{
+  "counts": {
+    "blocked": 0,
+    "closed_cancelled": 0,
+    "closed_done": 8,
+    "deferred": 0,
+    "in_progress": 0,
+    "ready": 0,
+    "total": 8
+  },
+  "projection_version": 1,
+  "tasks_tree_oid": "54b5d3535d85978c234c20b218049a69fd14895e"
+}

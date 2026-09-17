@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "id": "t-96459204bfaf1296ff24",
+  "title": "Build deterministic projections and integrity diagnostics",
+  "type": "feature",
+  "priority": "P2",
+  "status": "closed",
+  "resolution": "done",
+  "description": "Implement v0.3.1 projections, FORMAT and doctor. Cases: verification/CASES.md 7. Write tests before implementation.",
+  "acceptance": [
+    "Ready/active projections and last-20 report are byte deterministic with stable ordering.",
+    "Stale reads warn and recompute without commits; rebuild preserves canonical bytes and repeated rebuild makes no commit.",
+    "Doctor rejects corrupt state and reports focused warnings; FORMAT documents tool-less reading."
+  ],
+  "labels": [],
+  "claim": null,
+  "manual_block": null,
+  "depends_on": [],
+  "parent": null,
+  "discovered_from": null,
+  "notes": [
+    {
+      "actor": "codex-projections",
+      "created_at": "2026-09-17T03:35:41.869Z",
+      "body": "Behavior-first projection evidence: wrote 4 tests before production, observed missing API compile failures, then cargo test projection::tests passed 4/4. Covers readiness ordering/counts/reverse relations, deterministic last-20 report and escaping, missing/corrupt/version/OID freshness, 256 KiB and graph warnings. FORMAT documents v1 tool-less reads/writes. Full cargo test currently 14 pass / 1 unrelated in-progress model format-version test fails; root will integrate and verify CLI rebuild/read behavior. Task remains claimed pending integration."
+    },
+    {
+      "actor": "codex-projections",
+      "created_at": "2026-09-17T03:56:38.867Z",
+      "body": "Final installed projection black-box 3/3 pass; all 4 projection unit tests pass. Stale read no commits, exact canonical byte preservation, missing and altered-mode repair, idempotent rebuild, active membership verified."
+    }
+  ],
+  "created_at": "2026-09-17T03:30:52.052Z",
+  "updated_at": "2026-09-17T03:56:38.867Z",
+  "closed_at": "2026-09-17T03:56:38.867Z"
+}

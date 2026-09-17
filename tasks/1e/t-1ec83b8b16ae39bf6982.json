@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "id": "t-1ec83b8b16ae39bf6982",
+  "title": "Implement explicit sync and conflict resolution",
+  "type": "feature",
+  "priority": "P2",
+  "status": "closed",
+  "resolution": "done",
+  "description": "Implement v0.3.1 remote init, fetch/reconcile/push and shared resolver. Cases: verification/CASES.md 8. No production remote writes; use local bare fixtures.",
+  "acceptance": [
+    "First publish, adoption, fast-forwards and disjoint two-parent merges preserve project identity and source state.",
+    "Same-task and graph conflicts freeze mutations across worktrees; local/remote/file resolution and abort work.",
+    "Invalid remote state, foreign project and deleted known branch fail without unsafe ref changes.",
+    "Stale external canonical edits repair projections; remote advance before push safely retries without force."
+  ],
+  "labels": [],
+  "claim": null,
+  "manual_block": null,
+  "depends_on": [],
+  "parent": null,
+  "discovered_from": null,
+  "notes": [
+    {
+      "actor": "codex-sync",
+      "created_at": "2026-09-17T03:46:46.089Z",
+      "body": "Implemented Git synchronization and shared conflict resolution after test-first contracts. Initial 9 black-box cases failed because sync was absent. GC reachability regression and missing-history error regression were reproduced before fixes. Final Cargo-installed aye verification/sync_cases.py: 12 tests passed in 118.398 seconds, covering publication/adoption/single-branch fetch, all ancestry cases, exact-byte disjoint and identical merges, local/remote/file/abort resolution, graph-only conflicts, shared-worktree write blocking, project mismatch, corrupt and stale remote data, deletion refusal, remote advance before push, common remote selection, GC-safe pending conflicts, and MISSING_HISTORY. cargo clippy --all-targets -- -D warnings passed. Task remains claimed for primary integration review."
+    },
+    {
+      "actor": "codex-sync",
+      "created_at": "2026-09-17T03:58:09.554Z",
+      "body": "Final strengthened installed suite: 12/12 pass (153.660s). Every aye operation preserves source HEAD, branch, index bytes, status and content; source-only clones explicitly adopt metadata; dirty-source cases pass. Real GitHub publication/adoption/claim/completion roundtrip also passed."
+    }
+  ],
+  "created_at": "2026-09-17T03:30:52.510Z",
+  "updated_at": "2026-09-17T03:58:09.554Z",
+  "closed_at": "2026-09-17T03:58:09.554Z"
+}

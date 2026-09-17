@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "id": "t-660b2a532f9d7cfba779",
+  "title": "Complete lifecycle, metadata and blocking",
+  "type": "feature",
+  "priority": "P2",
+  "status": "closed",
+  "resolution": "done",
+  "description": "Implement v0.3.1 local domain commands after bootstrap. Cases: verification/CASES.md 5-6. Write executable behavior checks before code.",
+  "acceptance": [
+    "Owner-only mutations and forced release with attributed reason work; invalid transitions leave state unchanged.",
+    "Block releases claim atomically; cancelled blockers stay unresolved; done unblocks without editing dependent canonical bytes.",
+    "Dependency/parent cycles, self/missing/duplicate edges and unsafe prerequisite reopen are rejected.",
+    "Metadata, labels, parent and immutable creation provenance roundtrip; defer/resume and cancellation behave as specified."
+  ],
+  "labels": [],
+  "claim": null,
+  "manual_block": null,
+  "depends_on": [],
+  "parent": null,
+  "discovered_from": null,
+  "notes": [
+    {
+      "actor": "codex-domain",
+      "created_at": "2026-09-17T03:36:05.419Z",
+      "body": "Implemented lifecycle, metadata and blocking after writing behavior tests and confirming red compilation for missing actions. cargo test --bin aye now passes all 15 unit tests (11 domain/model, 4 projection). Coverage includes owner and forced release audit, defer/resume/reopen, prefix discovery/parent resolution, block claim release, independent blockers, cancellation, unchanged dependent canonical task on prerequisite completion, unsafe active-dependent reopen, metadata and relation errors. Root will perform installed CLI integration and close this task."
+    },
+    {
+      "actor": "codex-domain",
+      "created_at": "2026-09-17T03:56:38.348Z",
+      "body": "Final installed domain black-box 3/3 pass; 15 integrated unit tests pass. Discovery/block release, completion without dependent byte edits, cycles, cancelled prerequisites, forced recovery and ownership verified."
+    }
+  ],
+  "created_at": "2026-09-17T03:30:51.663Z",
+  "updated_at": "2026-09-17T03:56:38.348Z",
+  "closed_at": "2026-09-17T03:56:38.348Z"
+}

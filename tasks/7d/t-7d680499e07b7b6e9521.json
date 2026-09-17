@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "id": "t-7d680499e07b7b6e9521",
+  "title": "Verify v1 end-to-end and document installed workflow",
+  "type": "feature",
+  "priority": "P2",
+  "status": "closed",
+  "resolution": "done",
+  "description": "Review integrated implementation against v0.3.1 required matrix; add missing behavior cases before corrections. Package through Cargo defaults.",
+  "acceptance": [
+    "Required core, lifecycle, blocking, worktree, projection, sync and source-isolation cases pass against installed aye.",
+    "cargo test, fmt and clippy pass; independent standards/spec reviews resolved.",
+    "README explains Cargo installation, agent workflow, explicit sync, conflict recovery and limits; tasks contain actual verification evidence."
+  ],
+  "labels": [],
+  "claim": null,
+  "manual_block": null,
+  "depends_on": [],
+  "parent": null,
+  "discovered_from": null,
+  "notes": [
+    {
+      "actor": "codex-main",
+      "created_at": "2026-09-17T03:58:10.184Z",
+      "body": "Final: 15 unit +26 installed black-box cases pass, fmt/clippy/diff checks pass, independent Standards/Spec review resolved. Live GitHub roundtrip passes with no source changes. Task source/view isolation verified per original shared-ref plan. Evidence and scale timings in verification/RESULTS.md; user explicitly authorized final source/task history consolidation and force push."
+    }
+  ],
+  "created_at": "2026-09-17T03:30:53.582Z",
+  "updated_at": "2026-09-17T03:58:10.184Z",
+  "closed_at": "2026-09-17T03:58:10.184Z"
+}

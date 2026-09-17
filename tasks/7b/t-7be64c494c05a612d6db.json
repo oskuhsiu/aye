@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "t-7be64c494c05a612d6db",
+  "title": "Verify live GitHub task synchronization",
+  "type": "chore",
+  "priority": "P2",
+  "status": "closed",
+  "resolution": "done",
+  "description": "Live-host roundtrip authorized for oskuhsiu/aye; retain closed task as evidence.",
+  "acceptance": [
+    "Original repository sees the independent repository claim after explicit sync.",
+    "Wrong-owner mutation fails atomically; completion roundtrips without source changes."
+  ],
+  "labels": [
+    "verification"
+  ],
+  "claim": null,
+  "manual_block": null,
+  "depends_on": [],
+  "parent": null,
+  "discovered_from": null,
+  "notes": [
+    {
+      "actor": "github-verifier",
+      "created_at": "2026-09-17T03:55:36.924Z",
+      "body": "GitHub publication/adoption and claim visibility verified; wrong-owner mutation refused without changing state."
+    }
+  ],
+  "created_at": "2026-09-17T03:55:25.676Z",
+  "updated_at": "2026-09-17T03:55:37.569Z",
+  "closed_at": "2026-09-17T03:55:37.569Z"
+}

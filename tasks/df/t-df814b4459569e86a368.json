@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "id": "t-df814b4459569e86a368",
+  "title": "Complete CLI queries, actor configuration and integration",
+  "type": "feature",
+  "priority": "P2",
+  "status": "closed",
+  "resolution": "done",
+  "description": "Wire all domain/projection/sync features to documented v1 CLI and JSON contract. Cases: verification/CASES.md 5,7,9.",
+  "acceptance": [
+    "All v1 commands parse and return stable JSON envelopes and coarse exit codes.",
+    "Actor flag overrides env and worktree-private identity; linked worktrees keep separate actors.",
+    "List/ready filtering, reverse relations in show, report/status/rebuild/config match the specification."
+  ],
+  "labels": [],
+  "claim": null,
+  "manual_block": null,
+  "depends_on": [
+    "t-730f4198988465c690b4"
+  ],
+  "parent": null,
+  "discovered_from": null,
+  "notes": [
+    {
+      "actor": "codex-main",
+      "created_at": "2026-09-17T03:56:39.930Z",
+      "body": "Final installed CLI black-box 3/3 and bootstrap 5/5 pass; actor priority/private worktrees, filters, metadata/note files, invalid JSON usage and source isolation verified. Blocking scale task completed and original task became ready without editing its canonical file."
+    }
+  ],
+  "created_at": "2026-09-17T03:30:53.013Z",
+  "updated_at": "2026-09-17T03:56:39.930Z",
+  "closed_at": "2026-09-17T03:56:39.930Z"
+}
