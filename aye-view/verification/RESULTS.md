@@ -86,3 +86,36 @@ No visual theme matrix or arbitrary dense-graph benchmark was run. Shared aye
 source did not change, so its full regression suite was not rerun. The user
 requested a single agent: implementation and final self-review were performed
 without an independent subagent review. Reproduction is in [README.md](README.md).
+
+## Final delivery recheck — 2026-09-18
+
+Task `t-273e1fb8fe8c125a9ee9` adds the root/package user guides without changing
+production source or verification code. `make -C aye-view integration
+PYTHON=test/venv/bin/python` passed: formatting, strict Clippy, 43 Rust tests,
+default-location Cargo installation, and five installed PTY sessions / 37 frames.
+The run used the primary checkout's Cargo target cache via CARGO_TARGET_DIR;
+installation still used Cargo defaults. Python dependencies were installed into
+the task checkout's ignored `aye-view/test/venv` from requirements.txt.
+
+Platform and Python match the preceding run. The harness recorded production
+source base `9614948e35f6349d34a640a780f1a1433b731841` before the documentation
+commit. Installed viewer SHA-256:
+`445e05b7de96625c42a5fdd7f7e147dd665b7203f2983e0211586a8c689a9365`.
+Evidence is retained in primary `aye-view/test/integrated-ez46_of4/`:
+result.json, decoded frames, raw PTYs and terminal-restoration records.
+
+The same 10,000-task chain fixture started in 0.2841s and reloaded in 0.5238s;
+first/next History windows took 0.0723s/0.0736s. The explicit writer took 0.8178s,
+excluded from reload timing. Read-only snapshots, stale-view preservation,
+linked-worktree updates, reload recovery and terminal restoration passed. Git
+subprocess calls and configured-remote connections were both zero. The primary
+reviewed decoded wide/narrow/tiny frames; the 20x6 no-task-row limitation remains.
+All earlier measurement and coverage limits still apply. Shared aye source was
+unchanged, so its full suite was not rerun.
+
+An independent reviewer inspected the earlier slice 7 changes and compared its
+committed report with preserved result.json, finding no actionable issues. This
+is a later review of that evidence; the user-authorized omission of independent
+review before the original slice 7 merge remains part of the historical record.
+Current guide review and final integration/cleanup are recorded in the delivery
+task's aye notes.
