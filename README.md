@@ -1,22 +1,99 @@
 # aye tools
 
-Each tool lives in its own directory. The existing Rust CLI is in [aye/](aye/);
-future graphical tools can be added alongside it.
-All tools share the repository's root `.git/`, source history and aye task state.
+Two Rust tools share the root `.git/`, source history and task state: **aye**
+manages tasks; **aye-view** explores them in a read-only terminal UI.
 
 | Directory | Contents |
 | --- | --- |
 | [aye/](aye/README.md) | Git-native task manager CLI, Cargo package and development commands |
+| [aye-view/](aye-view/README.md) | Live dependency graph, List, Focus, closed History and selected-task details |
 | [aye/skill/](aye/skill/README.md) | Portable agent skill and human installation guide |
 | [aye/verification/](aye/verification/CASES.md) | Behavior cases and executable verification scripts |
 
-From this repository root:
+## Install
+
+From this repository root, with Rust/Cargo and a native build toolchain:
 
 ```sh
 cargo install --path aye --force --locked
-make -C aye test
+cargo install --path aye-view --force --locked
 ```
 
 Cargo uses its configured/default installation location, normally `~/.cargo/bin`.
-Generated `aye/target/` build output and `aye/test/` fixtures are ignored and may
-be deleted; builds and tests recreate them. Keep the verification scripts.
+Git is required for the aye CLI. Run either tool inside the target repository or
+a linked worktree. Initialize task state with `aye init` when needed; see the
+[CLI guide](aye/README.md) for initialization and explicit sync choices.
+
+```sh
+aye-view
+```
+
+## View tasks
+
+aye-view reads canonical local state from `refs/agent-tasks/state`. It observes
+other linked worktrees' updates without network sync, task mutation or projection
+repair. Reload errors retain a marked last-good display. The native reader
+currently supports SHA-1 repositories; SHA-256 returns a compatibility error.
+
+The default graph includes current work and closed prerequisite context. An
+arrow `B -> A` means A depends on B; cancelled prerequisites still block. Parent
+and discovery relations appear in details. `╳` marks lines crossing without a
+join. Status symbols remain meaningful without color; `NO_COLOR` disables colors.
+
+| Key | Action |
+| --- | --- |
+| Left / Ctrl-h, Right / l | Select a visible prerequisite or dependent in Graph |
+| Up / k, Down / j | Same-layer graph navigation, list movement, or focused text scrolling |
+| Shift-arrows | Pan Graph without changing selection |
+| Tab | Graph/List; in History, switch pane |
+| Enter, Esc | Open details / go back |
+| `/`, `f` | Search title/ID/labels, or filter state/priority/type/label/claimant |
+| `F`, `g` | Focus selected dependency context / return to full Current Graph |
+| `c`, `]` | Toggle recent closed (24 hours) / select a task in that secondary region |
+| `h` | Closed History, newest first, exposed in batches |
+| `r` | Force local refresh |
+| `?` | Help; arrows or PgUp/PgDown scroll it |
+| `q`, Ctrl-c | Quit |
+
+Entering Focus clears filters; subsequent filters narrow its context. An outside
+search result exits Focus. Details and Help scroll, and narrow terminals show a
+single readable pane. The [viewer guide](aye-view/README.md) lists all
+mode-specific controls, state symbols, errors and recovery steps. In Search,
+letters (including `q`) enter text; Ctrl-c quits from every mode.
+
+Integrated viewer validation passed with a 10,000-task fixture (1,000 active,
+100 ready): the recorded run started in 0.320s and reloaded in 0.678s. These are
+single-run observations for a chain-shaped graph, not performance guarantees
+for arbitrary dense graphs. See [results and limits](aye-view/verification/RESULTS.md)
+and the [reproduction guide](aye-view/verification/README.md).
+Dependency path colors and graph zoom remain deferred enhancements.
+
+## Development checks
+
+From the repository root:
+
+```sh
+make -C aye test
+make -C aye-view test
+```
+
+The aye target runs formatting, strict Clippy, Rust tests, installation and
+installed CLI integration suites. The aye-view test target runs formatting,
+strict Clippy and Rust model/input/render tests, including the 10,000-task case.
+For the installed viewer's keyboard, refresh, read-only, terminal-restoration
+and scale checks, install the Python PTY dependencies and run integration:
+
+```sh
+python3 -m venv aye-view/test/venv
+aye-view/test/venv/bin/pip install -r aye-view/verification/requirements.txt
+make -C aye-view integration PYTHON=test/venv/bin/python
+```
+
+The integration target checks and installs aye-view through Cargo defaults,
+then runs the installed binary; it also requires installed aye and Git.
+See the [verification guide](aye-view/verification/README.md) for evidence files
+and coverage limits. Shared aye source changes also require `make -C aye test`.
+
+Package `target/` outputs and `test/` fixtures are ignored and can be deleted;
+builds/tests recreate them. Keep Cargo.lock files and durable verification
+sources. Source commits and task synchronization remain separate operations.
