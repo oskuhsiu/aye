@@ -214,7 +214,9 @@ complete task history and retry. There is no distributed claim lock across clone
 
 ## Development evidence
 
-Release 0.2.0 follows specification v0.3.2; canonical project format and task schema remain version 1. Behavior cases and milestones
+Release 0.3.0 adds direct assignment packets and atomic task batches to the
+existing task workflow; canonical project format and task schema remain version 1.
+Behavior cases and milestones
 are in [verification/CASES.md](verification/CASES.md). A tested local bootstrap
 created the remaining development tasks in its own shared state; subsequent work
 used claims, notes, blocking, completion, and reopen where verification found bugs.
