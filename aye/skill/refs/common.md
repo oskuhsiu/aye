@@ -1,43 +1,72 @@
 # Common workflow
 
-## Enter the project
+## Setup and identity
 
-Run from the target repository or a linked worktree, including a nested directory:
-
-```sh
-aye --version
-aye --json status
-```
-
-If the executable is missing, report that prerequisite or install it within the
-authorized scope. If status returns `NOT_INITIALIZED`, choose the intended setup:
+Run the installed aye inside the target repository or a linked worktree, including
+nested directories. Check installation and command support once at setup, or on
+an actual compatibility error; normal operations need no preliminary version,
+help or status calls. If the executable is missing, report the prerequisite or
+install it within the authorized scope. On `NOT_INITIALIZED`, choose setup:
 
 ```sh
 aye --json init             # discover/adopt the configured remote task state
 aye --json init --offline   # deliberately create local state without network
 ```
 
-Use online init when joining an existing remote project. Starting offline creates
-a separate project if no local state exists; later sync can return
-`PROJECT_MISMATCH`. Setup, sync and read commands do not require an actor.
-
-Use a distinct actor for each independent agent. Set a process identity once:
+Online init joins an existing remote project. Offline init can create a separate
+project and later cause `PROJECT_MISMATCH`. Setup, sync and reads need no actor.
+Set a distinct process identity once for each independent agent:
 
 ```sh
 export AYE_ACTOR=agent-a
 ```
 
-Lookup order is `--actor`, `AYE_ACTOR`, then the worktree-local actor file set by
-`aye config actor agent-a`. Agents sharing one worktree should use separate
-process identities or `--actor`, rather than overwrite that worktree's default.
-Use the same identity throughout a claim.
+Precedence is `--actor`, `AYE_ACTOR`, then the worktree-local actor file set by
+`aye config actor agent-a`. Preserve a shared checkout's default; use process
+identity or `--actor`. Keep the same identity throughout a claim. Executing agents
+call aye directly; no handler or runtime role/model routing is needed.
 
-Linked worktrees see task changes immediately. For work involving independent
-clones, run `aye --json sync` at session start and handoff when remote task
-publication is in scope. This both fetches and pushes; read
-[Sync and conflicts](sync-and-conflicts.md) for remote behavior or failures.
+Linked worktrees share changes immediately. For independent clones, use
+`aye --json sync` at session start/handoff only when remote task publication is
+in scope. It fetches and pushes; read [Sync and conflicts](sync-and-conflicts.md).
 
-## Find or define work
+## Acquire assigned work directly
+
+When authorized to start the next task within expressible scope:
+
+```sh
+aye --json claim --next
+aye --json claim --next --priority P1 --type bug --label auth
+```
+
+Use only the appropriate one of these commands. Filters combine. Selection uses
+priority P0–P4, then creation time and ID, and claims atomically. For a specified
+task, use `aye --json claim TASK_ID --packet`; it never substitutes another task.
+Explicit-ID claims retain their existing lifecycle rules.
+
+Read the successful packet itself: it contains the complete assigned task,
+acceptance, notes, claim, computed context, snapshot identity and bounded direct
+related-task briefs with statuses. A new claim is already in progress; proceed
+to required source/worktree checks without another aye acceptance or confirmation
+call. The packet cannot verify recorded paths, source commits or test evidence.
+Follow [Worktree context](worktrees.md) before editing.
+
+Next-claim outcomes distinguish newly claimed work, already-owned work, no ready
+task and existing assignments needing a decision. The command checks this actor's
+existing claims before allocating: one matching claim is returned, while multiple
+or out-of-scope claims prevent new allocation. This is a `--next` guard, not a
+global one-task ownership limit. Preserve identity and resolve ambiguous scope.
+For no ready work, use the returned matching counts and blocked/deferred/claimed
+explanations; do not automatically resume deferred work or widen user scope.
+
+Packets cap related briefs at 20 and serialized output at 64 KiB, reporting
+omissions while retaining the full assigned task. Allow sufficient tool output.
+If mandatory detail is too large, no new claim is made and no lower-priority task
+is substituted; an already-owned task stays owned. Follow
+[Diagnostics](diagnostics.md) for oversized or lost/truncated replies.
+
+When the user wants comparison, or scope cannot be represented safely by filters,
+inspect first and then explicitly claim the selected task:
 
 ```sh
 aye --json ready
@@ -45,93 +74,85 @@ aye --json list --all --query "login"
 aye --json show TASK_ID
 ```
 
-`ready` defaults to 20 tasks; `--all` removes that limit. `list` defaults to
-non-closed tasks. Both return `data` arrays containing `task` and `computed`;
-`show` returns one such object. Check acceptance, notes, blockers and ownership
-before choosing work. Readiness identifies candidates within the assigned scope.
-Search existing tasks before creating the same work again.
+Readiness is a snapshot, not ownership. `ready` defaults to 20 (`--all` removes the
+limit); `list` defaults to non-closed tasks. Search before creating duplicate work.
+Use full returned task IDs in automation; `TASK_ID` in shell examples is a
+placeholder. Batch targets require full IDs.
 
-Before implementing new tracked work, record observable success and failure cases
-in acceptance. Choose a few meaningful checks from the intended behavior; for a
-bug, include its reproduction. Documentation can use executable examples and
-scenario review instead of tests that merely match wording.
+## Record decided work atomically
 
-```sh
-aye --json create "Fix duplicate refresh" --type bug --priority P1 \
-  --acceptance "Concurrent callers share one refresh request" \
-  --acceptance "A failed refresh releases all waiting callers"
+Before implementing new tracked work, record observable success/failure acceptance
+cases, including reproduction for a bug. Documentation can use executable examples
+and scenario review. Use `aye --json apply --file request.json` (or `--file -` for
+stdin) to record an already-decided plan in one transaction:
+
+```json
+{
+  "version": 1,
+  "operations": [
+    {"op": "create", "as": "prerequisite", "title": "Repair refresh prerequisite", "acceptance": ["Failure releases waiting callers"]},
+    {"op": "create", "as": "fix", "title": "Fix duplicate refresh", "type": "bug", "priority": "P1", "depends_on": [{"local": "prerequisite"}], "acceptance": ["Concurrent callers share one refresh"]},
+    {"op": "create", "as": "verification", "title": "Verify refresh flow", "depends_on": [{"local": "fix"}], "acceptance": ["Concurrent success and failure scenarios pass"]}
+  ]
+}
 ```
 
-Creation does not claim. Read the new full ID from `data.task.id`. In these guides,
-`TASK_ID`, `PREREQUISITE_ID` and similar uppercase arguments are placeholders for
-IDs returned by aye. Prefer full IDs in automation; unique prefixes need at least
-eight payload hex characters.
+Creation does not claim. `as` defines a unique request-local alias;
+`{"local":"name"}` refers only to an earlier create. Existing tasks use full ID
+strings. Operations run in supplied order, under one actor from normal identity
+resolution, and obey normal ownership/lifecycle rules. Any invalid operation
+rejects the whole batch. Unknown fields/operations, duplicate or forward aliases
+are errors. Limits are 100 operations and 1 MiB; no automatic splitting occurs.
 
-## Claim, work and finish
+The reply confirms the committed snapshot, alias IDs, operation outcomes and final
+states of touched tasks. Keep these facts for later operations; no routine reread
+is needed. For read-dependent decisions, an optional top-level
+`expected_state_oid` rejects changes against a stale snapshot. Independent creates
+and append-only facts need no extra read merely to acquire this guard.
 
-For source work, inspect existing checkout notes before choosing or creating a
-worktree. Follow [Worktree context](worktrees.md) to verify the checkout and,
-after claiming, record its actual location before editing.
+Batch create/update/note/block/unblock/claim/release/defer/resume/close/reopen as
+needed. Forced release, sync, init, config, rebuild, conflict resolution and source
+or filesystem operations remain separate. Different owners require separate
+batches or an authorized handoff. Batch only facts already known: tests, review
+and integration still have to happen before their success can be recorded.
 
-```sh
-aye --json claim TASK_ID
-aye --json note TASK_ID "Reproduced the failure; regression case fails as expected"
-# Implement the assigned work and run its checks.
-# Integrate and clean up task worktrees as required by the project; record evidence.
-aye --json close TASK_ID --note "Regression and focused checks pass; evidence: ..."
+## Progress, pauses and completion
+
+Record actual decisions, checks and remaining work. Notes append; correct earlier
+facts with a new note. For one longer note, `aye --json note TASK_ID --file evidence.md`
+remains available. For an ordinary pause, batch the handoff note and release:
+
+```json
+{
+  "version": 1,
+  "operations": [
+    {"op": "note", "id": "t-0123456789abcdef0123", "body": "Handoff: machine=HOST; worktree=/actual/checkout; branch=fix-refresh; HEAD=COMMIT; changes=retained; checks=regression reproduced; next=implement correction"},
+    {"op": "release", "id": "t-0123456789abcdef0123"}
+  ]
+}
 ```
 
-Start work after the claim succeeds. A ready listing is a snapshot, not ownership.
-`TASK_ALREADY_CLAIMED` means another actor holds the task: inspect it and choose
-other assigned work or coordinate the handoff. `NOT_CLAIM_OWNER` means the current
-actor cannot make that edit; preserve the claim. Other failures are mapped in
-[Diagnostics](diagnostics.md).
+Replace the illustrative ID and checkout facts with observed values. For an
+already-open task, append only the note. Release makes only unblocked work eligible
+again; it does not authorize immediate execution. Explicit shelving uses the same
+note plus `defer`. Resume deferred work only within user-authorized scope. Both
+preserve unfinished changes and checkouts; see [Tasks and states](tasks-and-states.md).
 
-Record decisions, actual check results and remaining work in notes. Notes append;
-append a correction when needed. For longer evidence:
+For a discovered prerequisite, batch its create (with `discovered_from` set to the
+original full ID) and a `block` of the original with `by` referencing its alias.
+Provenance alone does not block. Blocking releases an active claim; only a
+prerequisite closed as done satisfies the dependency. For external waits use
+`block` with `reason`, then `unblock` when resolved. Removing `by` dependencies is
+for obsolete relationships, not normal prerequisite completion.
 
-```sh
-aye --json note TASK_ID --file evidence.md
-```
+Close as done only after acceptance, required independent review, source integration
+and verified task-worktree cleanup. A commit alone is insufficient. Batch the
+actual evidence note and `close` (using the same shape as note+release above), or
+use `aye --json close TASK_ID --note "Acceptance, review, integration and cleanup evidence: ..."`.
+Use the successful reply's final closed/done state as confirmation. Completion
+neither commits/publishes source nor syncs task state; report these separately.
 
-`close` defaults to `done`. Use it only when the task's acceptance is met, and
-include evidence or its location. A source commit by itself is not acceptance.
-Verify `data.task.status == "closed"` and `data.task.resolution == "done"` in the
-reply. Completion does not commit source changes or publish task state remotely.
-
-## Blocked or handing off
-
-Before releasing, deferring or blocking unfinished work, append progress,
-remaining checks and its retained [worktree context](worktrees.md).
-
-If a prerequisite is discovered while working:
-
-```sh
-aye --json create "Repair refresh prerequisite" --discovered-from TASK_ID \
-  --acceptance "The prerequisite behavior is verified"
-aye --json block TASK_ID --by PREREQUISITE_ID
-```
-
-Use the newly returned ID as `PREREQUISITE_ID`. `discovered_from` only records
-provenance; the `block` command adds the dependency. Blocking an in-progress task
-atomically releases its claim and changes it to open/blocked. After another actor
-closes the prerequisite as done, the dependent becomes ready if nothing else
-blocks it. Claim the dependent again before resuming.
-
-For a wait that is not another task:
-
-```sh
-aye --json block TASK_ID --reason "Waiting for staging credentials"
-aye --json unblock TASK_ID
-```
-
-Run `unblock` after the external wait is resolved. It clears only the manual
-blocker. `unblock TASK_ID --by PREREQUISITE_ID` removes only that dependency;
-use it when the prerequisite relationship is no longer required. Normal
-prerequisite completion needs no manual edge removal. A cancelled prerequisite
-continues to block its dependents.
-
-For an unblocked handoff, use `aye --json release TASK_ID`. Use `defer` for
-deliberately postponed work; see [Tasks and states](tasks-and-states.md). Synchronize when
-remote handoff is intended and report any sync failure separately from local
-progress.
+If output is lost, preserve the request and known actor/task IDs and inspect state
+before deciding what happened. Local aliases are not durable replay keys. Never
+blindly replay an uncertain create/note batch or allocate another task to replace
+a lost reply; see [Diagnostics](diagnostics.md).

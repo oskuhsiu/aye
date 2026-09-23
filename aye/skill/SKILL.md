@@ -7,12 +7,14 @@ description: Use aye to track coding tasks, claim work across linked Git worktre
 
 Coordinate work through the installed `aye` CLI. Run commands inside the target
 repository or one of its linked worktrees. This guide targets aye 0.2.x and task
-format 1; use `aye <command> --help` to check available options.
+format 1. Check command compatibility once during setup, or after an actual
+compatibility error. Executing agents call aye directly with their own actor;
+no handler, runtime role or model-routing configuration is required.
 
 ## Read what the operation needs
 
 - **Everyday task work:** read [Common workflow](refs/common.md) first. It covers
-  setup, finding work, acceptance cases, claims, notes, blockers and completion.
+  direct task acquisition, atomic batches, acceptance, pauses and completion.
 - **Starting, resuming or cleaning up a worktree:** read
   [Worktree context](refs/worktrees.md) to record and recover the task's checkout.
 - **Metadata, filtering or lifecycle changes:** read
@@ -26,6 +28,8 @@ format 1; use `aye <command> --help` to check available options.
 
 References are relative to this skill directory. Load only the relevant files.
 Use `--json` for decisions; success is `ok: true`, failures use `error.code`.
-Task mutations go through aye, which coordinates ownership and validates state.
+Successful replies confirm the operation; do not add routine help/version/status
+preflights, confirmation reads or task-accepted messages. Task mutations go
+through aye, which coordinates ownership and validates state.
 Keep source work, task completion and remote synchronization as distinct results
 when reporting progress.

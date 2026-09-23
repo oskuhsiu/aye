@@ -28,39 +28,88 @@ are distributed with this package.
 
 ## Agent workflow
 
-Run inside any Git worktree, including nested directories:
+Run inside any Git worktree, including nested directories. Set up once:
 
 ```sh
 aye init                  # adopts existing remote refs/agent-tasks/state
-aye config actor agent-a  # this worktree only
-aye sync                  # explicit remote fetch/reconcile/push
-aye ready --json
-aye create "Fix login race" --type bug --priority P1 \
-  --acceptance "Concurrent callers share one refresh" \
-  --acceptance "Failed refresh releases waiting callers"
-aye claim <task-id>
-aye note <task-id> "Reproduced the failure; regression test now fails"
-# Implement and run the test cases.
-aye close <task-id> --note "Regression and focused checks pass"
-aye sync
+export AYE_ACTOR=agent-a   # distinct identity for this independent agent
 ```
 
 For local-only setup, use `aye init --offline`. Actor precedence is `--actor`,
-`AYE_ACTOR`, then the current worktree's actor file. Task mutations require an actor.
-A claim belongs to one actor; ordinary edits while claimed require that owner.
-Recovery is `aye release <id> --force --reason "Previous agent terminated"`.
+`AYE_ACTOR`, then the current worktree's actor file. Mutations require an actor;
+ordinary edits to a claimed task require its owner. Preserve shared actor config.
 
-Discover a prerequisite while working:
+Start the next authorized task directly, optionally narrowing its scope:
 
 ```sh
-aye create "Repair dependency" --discovered-from <original-id>
-aye block <original-id> --by <prerequisite-id>
+aye --json claim --next --priority P1 --type bug --label auth
 ```
 
-Blocking releases the original claim atomically. Only `closed(done)` satisfies a
-dependency; cancellation keeps dependents blocked. External waiting conditions use
-`aye block <id> --reason "Waiting for credentials"`; `aye unblock <id>` clears only
-that external blocker. `aye unblock <id> --by <prerequisite>` removes only that edge.
+For a specified task, use `aye --json claim TASK_ID --packet`. The packet contains
+the complete task, acceptance, notes, ownership and direct related-task briefs with
+statuses, all from the same snapshot. Start after a successful claim and required
+source/worktree checks; the reply is confirmation. There is no handler or model
+routing requirement, and no recurring help/version/status preflight. Use read-only
+`ready`, `list` or `show` when comparing tasks or clarifying scope before claiming.
+
+`--next` atomically checks this actor's current claims: one matching claim is
+returned as already owned; multiple or out-of-scope claims require a decision and
+prevent new allocation. This is not a global claim limit; explicit-ID claims keep
+their existing behavior. No-ready results explain matching blocked/deferred/claimed
+work without a write. Do not automatically resume deferred tasks or widen scope.
+Packets allow 20 related briefs and 64 KiB, with omission counts. Mandatory task
+details never silently truncate; an oversized candidate is not newly claimed or
+skipped, and an oversized already-owned task remains owned.
+
+Record an already-decided plan with one atomic request:
+
+```sh
+aye --json apply --file plan.json
+```
+
+```json
+{
+  "version": 1,
+  "operations": [
+    {"op": "create", "as": "dependency", "title": "Repair refresh prerequisite", "acceptance": ["Failure releases waiting callers"]},
+    {"op": "create", "as": "fix", "title": "Fix login race", "type": "bug", "priority": "P1", "depends_on": [{"local": "dependency"}], "acceptance": ["Concurrent callers share one refresh"]}
+  ]
+}
+```
+
+`--file -` reads stdin. Existing task targets require full IDs; local references
+point only to earlier unique `as` aliases. Operations execute in order under one
+actor. Requests reject unknown fields, invalid operations, ownership violations
+and invalid graphs without partial publication. Limits are 100 operations and
+1 MiB; oversized requests are not silently split. Optional `expected_state_oid`
+guards read-dependent decisions and rejects stale snapshots. Independent creates
+or append-only facts need no preliminary snapshot read just for this guard.
+
+The receipt supplies the committed OID, alias IDs, operation outcomes and final
+states of touched tasks, including changed facts and added notes. Supported
+operations are create, update, note, block, unblock, claim, ordinary release,
+defer, resume, close and reopen. Sync, forced release, configuration, conflict
+resolution and source/filesystem actions remain separate.
+
+For an ordinary pause, batch a note with `body` containing observed progress,
+remaining checks and checkout facts, followed by `release` of the same full ID.
+An already-open task needs only the note. Explicit shelving uses note plus `defer`.
+A discovered prerequisite can be created with an alias, then used by a `block`
+operation's `by` reference in the same batch. Blocking releases an active claim;
+only `closed(done)` satisfies a dependency. Cancellation keeps dependents blocked.
+External waits use `block` with `reason`; `unblock` clears that manual blocker.
+
+Record actual acceptance, independent review, source integration and verified
+worktree-cleanup evidence before closing done. Batch the known evidence note and
+close only after those actions succeed; a commit alone is insufficient. Source
+publication and task sync are separate actions; `aye sync` fetches and pushes.
+
+If a reply is lost/truncated, inspect retained actor/task facts before retrying.
+The current-claim guard and local aliases are not historical replay keys: after
+release/close, another next-claim could allocate different work, and replayed
+creates/notes can duplicate data. Report uncertainty if success cannot be proved.
+See the [common workflow](skill/refs/common.md) and
+[diagnostics](skill/refs/diagnostics.md) for complete examples and recovery.
 
 ## Commands
 
@@ -69,9 +118,10 @@ that external blocker. `aye unblock <id> --by <prerequisite>` removes only that 
 | Setup and sync | `init [--offline]`, `sync`, `config actor [value]`, `config remote [name]` |
 | Discover work | `ready`, `list`, `show <id>`, `status`, `report` |
 | Task metadata | `create`, `update`, `note <id> <text>` or `note <id> --file <path>` |
-| Ownership | `claim`, `release [--force --reason <text>]` |
+| Ownership | `claim --next [filters]`, `claim <id> [--packet]`, `release [--force --reason <text>]` |
 | Blocking | `block --by <id>` or `block --reason <text>`, `unblock [--by <id>]` |
 | Lifecycle | `close [--cancelled] [--note <text>]`, `reopen`, `defer`, `resume` |
+| Atomic task writes | `apply --file PATH` or `apply --file -` |
 | Integrity | `doctor`, `rebuild`, `resolve` |
 
 All commands support `--json`; inspect `error.code`. Exit codes are 0 success,

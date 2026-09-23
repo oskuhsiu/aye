@@ -1,8 +1,8 @@
 # Worktree context
 
 Keep checkout and resumption context in existing `aye note` entries, visible with
-`aye --json show TASK_ID`. These are human-readable evidence, not an automatic
-association or a new task field. A claim identifies an actor, not a checkout.
+the successful assignment packet or `aye --json show TASK_ID` when needed. These
+are human-readable evidence, not an automatic association or a new task field. A claim identifies an actor, not a checkout.
 Notes append; the latest explicit checkout update supersedes older locations.
 Keep historical notes, including corrections and cleanup evidence.
 
@@ -46,7 +46,7 @@ in the current note.
 
 ## Interrupt and resume
 
-Before release, defer or block, append a handoff note with the machine, worktree,
+Batch release, defer or block with a handoff note containing the machine, worktree,
 branch, current commit, uncommitted-work status, completed checks and next step.
 Preserve unfinished changes and the checkout needed to recover them. Task
 lifecycle commands do not remove worktrees. A commit ID alone does not preserve
@@ -54,7 +54,8 @@ uncommitted changes or make a local branch available on another machine.
 
 On resumption:
 
-1. Read `aye --json show TASK_ID` from a known checkout. Find the latest execution
+1. Read the assignment packet, or `aye --json show TASK_ID` when inspecting before
+   acquisition, from a known checkout. Find the latest execution
    or handoff context, including any later cleanup or correction. No checkout
    note, or an explicit `active worktree: none`, is normal: select a checkout for
    the current work and record it after claiming.
@@ -100,9 +101,10 @@ before recording cleanup. If
 removal fails, keep the remaining location and reason in a note; do not force
 removal or claim it succeeded. `hd rm` retains the branch.
 
-Append `Execution: active worktree: none` with the removed path, retained branch,
+Record `Execution: active worktree: none` with the removed path, retained branch,
 source/integration commit and verification evidence. If a shared checkout is
 retained, explicitly record that the task no longer uses it and why it remains.
-Then close the task with its acceptance evidence. Closing alone does not clean
+Batch that verified cleanup note with close and its acceptance evidence.
+Only batch after cleanup has actually succeeded. Closing alone does not clean
 up a checkout, and cleanup alone does not establish task completion. Source
 publication and task sync remain separate, scoped actions.

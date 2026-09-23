@@ -13,7 +13,8 @@ aye --json doctor
 aye --json show TASK_ID
 ```
 
-These inspect state without changing task history. `doctor` checks canonical
+Use these only for the relevant diagnostic question, not after every successful
+claim or write. They inspect state without changing task history. `doctor` checks canonical
 schemas, ID paths, relationships, claims and view freshness. A healthy store says
 nothing about whether a task's software acceptance has been tested.
 
@@ -32,6 +33,30 @@ nothing about whether a task's software acceptance has been tested.
 For usage failures, check `aye COMMAND --help`. For IO/Git/internal failures,
 inspect the reported cause and repository access before retrying; preserve the
 state rather than repeatedly attempting a destructive reset.
+
+## Assignment or batch uncertainty
+
+A no-ready or existing-assignment packet is an unchanged observation, not a new
+claim. Use its counts, filters and owner context to decide whether authorized
+work remains. An oversized assignment error leaves a new candidate unclaimed;
+an oversized already-owned task stays owned. Inspect its known ID deliberately
+and arrange adequate output capacity; do not skip priority or invent missing detail.
+
+After a lost/truncated reply, retain actor identity, the request, known task IDs
+and any returned OID. Inspect the known task, or use
+`aye --json list --state in_progress --claimant ACTOR` to locate a retained claim.
+Read required details before editing. `--next`'s existing-claim guard is not
+historical idempotency: after release or close, another call could allocate
+different work. If the original result cannot be proved, report uncertainty
+instead of blindly allocating again.
+
+For uncertain apply results, inspect known tasks and recorded evidence before
+replay. Local aliases are not durable request IDs; retrying creates or notes can
+duplicate work. An ordinary rejected batch leaves no partial authoritative writes;
+use its failed-operation details and underlying error to correct the request.
+An `expected_state_oid` mismatch requires reassessing the decision against the
+observed state, not silently dropping the guard. Internal concurrency retries
+replay the transaction; a caller rerun after output loss is a separate request.
 
 ## Stale projections versus corrupt canonical data
 

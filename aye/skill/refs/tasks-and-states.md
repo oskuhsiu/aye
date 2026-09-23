@@ -22,7 +22,9 @@ last-20 closed and discovered sections.
 ## Metadata and relationships
 
 Task types are `task`, `bug`, `feature`, `chore`; priority defaults to `P2`.
-Use `aye create --help` and `aye update --help` for the complete option surface.
+Consult `aye create --help` or `aye update --help` when an option is needed,
+not as a recurring preflight. [Common workflow](common.md) covers atomic batches
+for already-decided metadata and relationship changes.
 
 ```sh
 aye --json update TASK_ID --title "Prevent duplicate refresh" --priority P1 \
@@ -76,5 +78,8 @@ obsolete, remove that edge deliberately. Reopening a prerequisite is rejected
 while a dependent is in progress; arrange release by that dependent's owner first.
 Adding a blocker that is already done returns `BLOCKER_ALREADY_SATISFIED`.
 
-Deferred tasks have no automatic wake-up, deadline or scheduler. Resume explicitly
-when work should be considered again. There is no task delete command.
+Ordinary pauses record a handoff note and release in one batch; reserve defer
+for explicit shelving. Deferred tasks have no automatic wake-up, deadline or
+scheduler. Resume within user-authorized scope when work should be considered
+again; existing blockers still apply. Do not migrate old deferred records merely
+to make them ready. There is no task delete command.

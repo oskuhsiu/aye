@@ -2,7 +2,8 @@
 
 This package teaches an agent how to use the aye task manager. It covers daily
 task work, coordination across Git worktrees, explicit remote synchronization,
-conflict handling and Git/API inspection. It targets aye 0.2.x with canonical
+conflict handling and Git/API inspection. Agents invoke aye directly; no handler
+agent, runtime role or model-routing setup is required. It targets aye 0.2.x with canonical
 format 1. This README is for people; the agent starts at `SKILL.md`.
 
 ## Package layout
@@ -60,6 +61,15 @@ scope. Each independent agent should have a distinct actor identity.
 
 ## What to expect
 
+Starting authorized next work normally uses one `claim --next`; a specified task
+uses `claim TASK_ID --packet`. The reply supplies complete task details and bounded
+related context, and confirms ownership without another acceptance call. Read-only
+comparison remains available before choosing scope. Already-decided multi-task
+plans, progress and lifecycle changes use an atomic `apply --file` request.
+Compatibility checks belong at setup or an actual error, not every operation.
+
+Ordinary pauses record a handoff note and release; explicit shelving uses defer.
+Lost output requires inspection before retrying, since replay is not exactly-once.
 Source changes, task completion and remote task publication are separate results.
 The agent should record actual verification evidence before closing work as done.
 Local linked worktrees share claims immediately; independent clones need sync
