@@ -2,7 +2,12 @@
 """Atomic batch contract tests against the installed aye binary."""
 import concurrent.futures
 import json
+import os
+import shutil
+import subprocess
+import sys
 import threading
+import time
 import unittest
 import uuid
 
@@ -151,6 +156,119 @@ class Batches(RepositoryCase):
         proc = run(self.repo, [AYE, '--json', '--actor', 'agent-a', 'apply', '--file', '-'],
                    input=json.dumps({'version': 1, 'operations': [{'op': 'create', 'title': 'stdin'}]}))
         self.assertTrue(json.loads(proc.stdout)['ok'])
+
+    def force_publication_race(self, operations, template, *, expected=None):
+        """Pause only this child's first CAS; a direct Git writer bypasses its lock."""
+        control = self.home / ('cas-' + uuid.uuid4().hex)
+        control.mkdir()
+        wrapper = control / 'git'
+        wrapper.write_text('#!' + sys.executable + '\n' + """
+import os
+from pathlib import Path
+import sys
+import time
+
+control = Path(os.environ['AYE_TEST_CAS_CONTROL'])
+args = sys.argv[1:]
+ref = 'refs/agent-tasks/state'
+if args and args[0] == 'update-ref' and ref in args:
+    candidate = args[args.index(ref) + 1]
+    with (control / 'attempts').open('a') as log:
+        log.write(candidate + '\\n')
+    paused = control / 'paused'
+    if not paused.exists():
+        paused.write_text(candidate)
+        deadline = time.monotonic() + 20
+        while not (control / 'release').exists():
+            if time.monotonic() >= deadline:
+                sys.exit('Timed out waiting for test CAS release')
+            time.sleep(0.01)
+os.execv(os.environ['AYE_TEST_REAL_GIT'], ['git', *args])
+""")
+        wrapper.chmod(0o755)
+        request = {'version': 1, 'operations': operations}
+        if expected is not None:
+            request['expected_state_oid'] = expected
+        request_path = control / 'request.json'
+        request_path.write_text(json.dumps(request))
+        env = {**os.environ, 'AYE_ACTOR': 'agent-a',
+               'PATH': str(control) + os.pathsep + os.environ.get('PATH', ''),
+               'AYE_TEST_REAL_GIT': shutil.which('git'),
+               'AYE_TEST_CAS_CONTROL': str(control)}
+        process = subprocess.Popen([AYE, '--json', 'apply', '--file', str(request_path)],
+                                   cwd=self.repo, env=env, text=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            deadline = time.monotonic() + 15
+            while not (control / 'paused').exists():
+                self.assertIsNone(process.poll(), 'Batch exited before reaching CAS')
+                self.assertLess(time.monotonic(), deadline, 'Batch never reached CAS')
+                time.sleep(0.01)
+            competitor = json.loads(json.dumps(template))
+            competitor['id'] = 't-' + uuid.uuid4().hex[:20]
+            competitor['title'] = 'Unrelated external writer'
+            path = f"tasks/{competitor['id'][2:4]}/{competitor['id']}.json"
+            competing_oid = self.edit_state({path: competitor})
+        finally:
+            (control / 'release').touch()
+            try:
+                stdout, stderr = process.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+                raise
+        attempts = (control / 'attempts').read_text().splitlines()
+        self.assertTrue(stdout, stderr)
+        return process.returncode, json.loads(stdout), attempts, competitor, competing_oid
+
+    def test_forced_cas_replays_complete_batch_with_stable_ids(self):
+        existing = self.create('Existing task')
+        template = self.show(existing)['task']
+        before = self.state()
+        code, reply, attempts, competitor, competing_oid = self.force_publication_race([
+            {'op': 'create', 'as': 'created', 'title': 'Stable created task'},
+            {'op': 'note', 'id': {'local': 'created'}, 'body': 'New task evidence'},
+            {'op': 'note', 'id': existing, 'body': 'Existing task evidence'},
+        ], template)
+        self.assertEqual(0, code, reply)
+        self.assertTrue(reply['ok'], reply)
+        result = reply['data']
+        self.assertEqual(2, len(attempts))
+        self.assertNotEqual(attempts[0], attempts[1])
+        self.assertEqual(attempts[-1], result['state_oid'])
+        self.assertEqual(self.state(), result['state_oid'])
+        self.assertEqual(competing_oid, git(self.repo, 'rev-parse', self.state() + '^'))
+        created = result['aliases']['created']
+        created_path = f'tasks/{created[2:4]}/{created}.json'
+        losing = json.loads(git(self.repo, 'show', attempts[0] + ':' + created_path))
+        winning = json.loads(git(self.repo, 'show', result['state_oid'] + ':' + created_path))
+        self.assertEqual(losing, winning, 'CAS replay changed preallocated ID, time, or notes')
+        self.assertEqual(['New task evidence'], [note['body'] for note in winning['notes']])
+        self.assertEqual(['Existing task evidence'],
+                         [note['body'] for note in self.show(existing)['task']['notes']])
+        self.assertEqual(competitor, self.show(competitor['id'])['task'])
+        self.assertEqual(2, len(git(self.repo, 'rev-list', before + '..' + self.state()).splitlines()))
+        self.assertEqual(3, len(self.aye('list', '--all')))
+
+    def test_forced_cas_rechecks_expected_oid_and_rejects_whole_batch(self):
+        existing = self.create('Existing task')
+        template = self.show(existing)['task']
+        before = self.state()
+        code, reply, attempts, competitor, competing_oid = self.force_publication_race([
+            {'op': 'create', 'as': 'discarded', 'title': 'Must never publish'},
+            {'op': 'note', 'id': existing, 'body': 'Must never append'},
+        ], template, expected=before)
+        self.assertEqual(3, code, reply)
+        self.assertFalse(reply['ok'], reply)
+        self.assertEqual('STALE_STATE', reply['error']['code'])
+        self.assertEqual(competing_oid, reply['error']['details']['observed_state_oid'])
+        self.assertEqual(before, reply['error']['details']['expected_state_oid'])
+        self.assertEqual(1, len(attempts), 'Guarded batch must not attempt a second publication')
+        self.assertEqual(competing_oid, self.state())
+        self.assertEqual(template, self.show(existing)['task'])
+        self.assertEqual(competitor, self.show(competitor['id'])['task'])
+        self.assertEqual(2, len(self.aye('list', '--all')))
+        self.assertEqual([competing_oid], git(self.repo, 'rev-list', before + '..' + self.state()).splitlines())
 
     def test_concurrent_batches_preserve_whole_snapshots_and_receipts(self):
         before = self.state()
