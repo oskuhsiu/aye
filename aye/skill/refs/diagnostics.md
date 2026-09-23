@@ -54,7 +54,7 @@ For uncertain apply results, inspect known tasks and recorded evidence before
 replay. Local aliases are not durable request IDs; retrying creates or notes can
 duplicate work. An ordinary rejected batch leaves no partial authoritative writes;
 use its failed-operation details and underlying error to correct the request.
-An `expected_state_oid` mismatch requires reassessing the decision against the
+A `STALE_STATE` (`expected_state_oid` mismatch) requires reassessing the decision against the
 observed state, not silently dropping the guard. Internal concurrency retries
 replay the transaction; a caller rerun after output loss is a separate request.
 

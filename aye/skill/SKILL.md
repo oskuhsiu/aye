@@ -6,7 +6,7 @@ description: Use aye to track coding tasks, claim work across linked Git worktre
 # aye
 
 Coordinate work through the installed `aye` CLI. Run commands inside the target
-repository or one of its linked worktrees. This guide targets aye 0.2.x and task
+repository or one of its linked worktrees. This guide targets aye 0.3.x and task
 format 1. Check command compatibility once during setup, or after an actual
 compatibility error. Executing agents call aye directly with their own actor;
 no handler, runtime role or model-routing configuration is required.
@@ -15,6 +15,8 @@ no handler, runtime role or model-routing configuration is required.
 
 - **Everyday task work:** read [Common workflow](refs/common.md) first. It covers
   direct task acquisition, atomic batches, acceptance, pauses and completion.
+- **Constructing batch requests beyond the common examples:** read
+  [Atomic batch reference](refs/batches.md) for operation fields and clearing rules.
 - **Starting, resuming or cleaning up a worktree:** read
   [Worktree context](refs/worktrees.md) to record and recover the task's checkout.
 - **Metadata, filtering or lifecycle changes:** read

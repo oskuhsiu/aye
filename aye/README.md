@@ -26,6 +26,10 @@ removes disposable fixtures and build output; tests and Cargo recreate them.
 The [agent skill](skill/SKILL.md) and its [human installation guide](skill/README.md)
 are distributed with this package.
 
+The direct assignment and atomic batch interfaces below require aye 0.3.x.
+Canonical task format remains 1. Check support at setup or an actual compatibility
+error when using an older installation.
+
 ## Agent workflow
 
 Run inside any Git worktree, including nested directories. Set up once:
@@ -108,7 +112,8 @@ If a reply is lost/truncated, inspect retained actor/task facts before retrying.
 The current-claim guard and local aliases are not historical replay keys: after
 release/close, another next-claim could allocate different work, and replayed
 creates/notes can duplicate data. Report uncertainty if success cannot be proved.
-See the [common workflow](skill/refs/common.md) and
+See the [batch field reference](skill/refs/batches.md),
+[common workflow](skill/refs/common.md) and
 [diagnostics](skill/refs/diagnostics.md) for complete examples and recovery.
 
 ## Commands

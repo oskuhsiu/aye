@@ -3,7 +3,7 @@
 This package teaches an agent how to use the aye task manager. It covers daily
 task work, coordination across Git worktrees, explicit remote synchronization,
 conflict handling and Git/API inspection. Agents invoke aye directly; no handler
-agent, runtime role or model-routing setup is required. It targets aye 0.2.x with canonical
+agent, runtime role or model-routing setup is required. It targets aye 0.3.x with canonical
 format 1. This README is for people; the agent starts at `SKILL.md`.
 
 ## Package layout
@@ -14,6 +14,7 @@ skill/
 |-- README.md                    This human guide
 `-- refs/
     |-- common.md                Everyday workflow, claims, blockers, completion
+    |-- batches.md               Strict JSON request and operation fields
     |-- worktrees.md             Checkout notes, interruption/resume and cleanup
     |-- tasks-and-states.md      Metadata, queries, relationships and lifecycle
     |-- sync-and-conflicts.md    Remote synchronization and conflict resolution

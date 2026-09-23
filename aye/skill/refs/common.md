@@ -116,6 +116,9 @@ or filesystem operations remain separate. Different owners require separate
 batches or an authorized handoff. Batch only facts already known: tests, review
 and integration still have to happen before their success can be recorded.
 
+For exact operation fields, metadata replacement/clearing and cancellation,
+consult [Atomic batch reference](batches.md) when constructing those requests.
+
 ## Progress, pauses and completion
 
 Record actual decisions, checks and remaining work. Notes append; correct earlier
