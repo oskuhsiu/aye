@@ -30,6 +30,16 @@ pub struct Snapshot {
     pub tasks_tree_oid: String,
 }
 
+/// Read-only outcomes must bypass projection repair and publication.
+pub enum Mutation<T> {
+    ReadOnly(T),
+    Write(T),
+}
+pub struct Receipt<T> {
+    pub value: T,
+    pub oid: String,
+}
+
 impl Store {
     pub fn discover() -> Result<Self> {
         let cwd = std::env::current_dir()?;
@@ -439,24 +449,45 @@ impl Store {
         &self,
         mut operation: impl FnMut(&mut State) -> Result<serde_json::Value>,
     ) -> Result<serde_json::Value> {
+        Ok(self
+            .transact(|_, state| operation(state).map(Mutation::Write))?
+            .value)
+    }
+    /// Recompute the entire operation after a lost CAS. The receipt is pinned to
+    /// the successful publication (or unchanged observation), never a later head.
+    pub fn transact<T>(
+        &self,
+        mut operation: impl FnMut(&Snapshot, &mut State) -> Result<Mutation<T>>,
+    ) -> Result<Receipt<T>> {
         for _ in 0..12 {
             self.ensure_writable()?;
             let old = self.head()?;
             let mut state = old.state.clone();
-            let value = operation(&mut state)?;
+            let value = match operation(&old, &mut state)? {
+                Mutation::ReadOnly(value) => {
+                    return Ok(Receipt {
+                        value,
+                        oid: old.oid,
+                    });
+                }
+                Mutation::Write(value) => value,
+            };
             state.validate()?;
             let files = self.project_files(&state, Self::canonical(&state, Some(&old))?)?;
             if files == old.files {
-                return Ok(value);
+                return Ok(Receipt {
+                    value,
+                    oid: old.oid,
+                });
             }
             let oid = self.commit(&files, &[&old.oid], "aye task mutation")?;
             if self.cas(Some(&old.oid), &oid)? {
-                return Ok(value);
+                return Ok(Receipt { value, oid });
             }
         }
         Err(Error::new(
             "LOCAL_CONCURRENCY_RETRY_EXHAUSTED",
-            "Task state changed repeatedly; retry command",
+            "Task state changed repeatedly; inspect state before retrying",
         ))
     }
     pub fn actor(&self, explicit: Option<&str>) -> Result<Option<String>> {

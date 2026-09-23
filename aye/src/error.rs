@@ -5,6 +5,7 @@ pub struct Error {
     pub code: &'static str,
     pub message: String,
     pub exit: i32,
+    pub details: Option<serde_json::Value>,
 }
 pub type Result<T> = std::result::Result<T, Error>;
 impl Error {
@@ -13,13 +14,19 @@ impl Error {
             code,
             message: message.into(),
             exit: 3,
+            details: None,
         }
+    }
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
     pub fn usage(message: impl Into<String>) -> Self {
         Self {
             code: "INVALID_ARGUMENT",
             message: message.into(),
             exit: 2,
+            details: None,
         }
     }
 }
@@ -35,6 +42,7 @@ impl From<std::io::Error> for Error {
             code: "IO_ERROR",
             message: e.to_string(),
             exit: 1,
+            details: None,
         }
     }
 }

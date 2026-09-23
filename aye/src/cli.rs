@@ -1,9 +1,10 @@
+use crate::assignment::{self, Filters};
 use crate::domain::{Action, Update};
 use crate::error::{Error, Result};
 use crate::model::Task;
 use crate::store::{Snapshot, Store};
 use crate::{domain, projection, store, sync};
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 
 #[derive(Parser)]
@@ -23,22 +24,6 @@ struct Cli {
     actor: Option<String>,
     #[command(subcommand)]
     command: Commands,
-}
-#[derive(Args, Default)]
-struct Filters {
-    #[arg(long, value_parser = ["P0", "P1", "P2", "P3", "P4"])]
-    priority: Option<String>,
-    #[arg(long = "type", value_parser = ["task", "bug", "feature", "chore"])]
-    kind: Option<String>,
-    #[arg(long)]
-    label: Option<String>,
-}
-impl Filters {
-    fn matches(&self, task: &Task) -> bool {
-        self.priority.as_ref().is_none_or(|v| v == &task.priority)
-            && self.kind.as_ref().is_none_or(|v| v == &task.kind)
-            && self.label.as_ref().is_none_or(|v| task.labels.contains(v))
-    }
 }
 #[derive(Subcommand)]
 enum Commands {
@@ -121,9 +106,19 @@ enum Commands {
     Status,
     /// Display the deterministic human report without changing task history.
     Report,
-    /// Atomically claim an open, ready task in this repository.
+    /// Claim a task; --next selects one and returns complete assignment context.
     Claim {
-        id: String,
+        #[arg(required_unless_present = "next", conflicts_with = "next")]
+        id: Option<String>,
+        #[arg(long)]
+        next: bool,
+        #[arg(
+            long,
+            help = "Return a bounded full assignment packet (automatic for --next)"
+        )]
+        packet: bool,
+        #[command(flatten)]
+        filters: Filters,
     },
     /// Release a claim; forced recovery requires an attributed reason.
     Release {
@@ -439,7 +434,22 @@ fn execute(cli: &Cli) -> Result<Reply> {
                 },
             }
         }
-        Commands::Claim { id } => Action::Claim(id.clone()),
+        Commands::Claim {
+            id,
+            next,
+            packet,
+            filters,
+        } => {
+            if !*next && !filters.is_empty() {
+                return Err(Error::usage("Claim filters require --next"));
+            }
+            if *next || *packet {
+                let (data, warnings) =
+                    assignment::execute(&store, id.as_deref(), filters, actor.as_deref(), &now)?;
+                return Ok(Reply { data, warnings });
+            }
+            Action::Claim(id.clone().expect("clap requires id or --next"))
+        }
         Commands::Release { id, force, reason } => Action::Release {
             id: id.clone(),
             force: *force,
@@ -524,10 +534,11 @@ pub fn run_cli() {
         }
         Err(e) => {
             if cli.json {
-                println!(
-                    "{}",
-                    json!({"ok":false,"error":{"code":e.code,"message":e.message}})
-                );
+                let mut error = json!({"code":e.code,"message":e.message});
+                if let Some(details) = e.details {
+                    error["details"] = details;
+                }
+                println!("{}", json!({"ok":false,"error":error}));
             } else {
                 eprintln!("{e}");
             }
