@@ -217,7 +217,8 @@ complete task history and retry. There is no distributed claim lock across clone
 Release 0.3.0 adds direct assignment packets and atomic task batches to the
 existing task workflow; canonical project format and task schema remain version 1.
 Behavior cases and milestones
-are in [verification/CASES.md](verification/CASES.md). A tested local bootstrap
+are in [verification/CASES.md](verification/CASES.md); direct-operation results and
+measurement limits are in [verification/DIRECT_OPERATIONS_RESULTS.md](verification/DIRECT_OPERATIONS_RESULTS.md). A tested local bootstrap
 created the remaining development tasks in its own shared state; subsequent work
 used claims, notes, blocking, completion, and reopen where verification found bugs.
 `aye list --all` and `aye report` inspect that repository-local development record.

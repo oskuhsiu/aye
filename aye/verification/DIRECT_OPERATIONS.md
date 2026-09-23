@@ -43,3 +43,5 @@ late batch rollback, alias/schema errors, dependency cycles, lifecycle batches,
 CAS retry without duplicate notes/tasks, and read-only readers observing whole
 states. Known lost responses require read-only recovery, not blind command
 replay: after release/close the next allocation is different by design.
+
+Delivery results and measurement limits: [DIRECT_OPERATIONS_RESULTS.md](DIRECT_OPERATIONS_RESULTS.md).

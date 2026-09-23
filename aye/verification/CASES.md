@@ -1,6 +1,8 @@
 # Behavior-first acceptance cases
 
 The current custom-ref transport is covered by [CUSTOM_REFS.md](CUSTOM_REFS.md).
+Direct acquisition and atomic writes are specified in [DIRECT_OPERATIONS.md](DIRECT_OPERATIONS.md),
+with release evidence in [DIRECT_OPERATIONS_RESULTS.md](DIRECT_OPERATIONS_RESULTS.md).
 The bootstrap sequence below records the original development order.
 
 Cases are specified before their implementation. Tests use the installed `aye`
