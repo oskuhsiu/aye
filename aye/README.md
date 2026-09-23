@@ -218,6 +218,10 @@ complete task history and retry. There is no distributed claim lock across clone
 
 ## Development evidence
 
+Release 0.3.1 includes clarified ordinary-pause versus explicit-deferral guidance
+and next-session acquisition regression coverage. Runtime task transitions and
+canonical format remain unchanged.
+
 Release 0.3.0 adds direct assignment packets and atomic task batches to the
 existing task workflow; canonical project format and task schema remain version 1.
 Behavior cases and milestones
