@@ -45,3 +45,37 @@ terminal theme. No screenshot, installed-binary run, storage fingerprint check,
 installation, source publication or task mutation was performed by this developer.
 Independent Standards/Spec review and installed runtime evidence are owned by the
 primary agent and must precede final task acceptance.
+
+
+## Independent review and installed runtime
+
+The primary verified production candidate
+`b16943abf574aa6abc620f4123d346bdc01f3918` on 2026-09-23:
+
+- Independent Standards and Spec reviewers each reported zero findings. Both
+  reviews were static; runtime checks below were performed by the primary.
+- Cargo-default installation produced `/Users/apple/.cargo/bin/aye-view` with
+  SHA-256 `0aab20a8fbf25befe7d063fdfc35550b52bca376e843d5b9ddb49a6b900433cd`.
+- A crossed-pair installed PTY probe observed source colors `00cdcd` and `cd00cd`,
+  with neutral `╳`. Its NO_COLOR counterpart retained the crossing and had no
+  route colors. Both PTYs restored terminal state; repository fingerprints
+  remained unchanged and neither session invoked Git subprocesses.
+- The complete installed suite passed five sessions / 37 frames, including
+  input/navigation, read-only checks, live refresh and error recovery. Its
+  10,000-total / 1,000-active / 100-ready fixture started in 0.3031s and reloaded
+  in 0.5704s. There were no Git subprocesses or configured-remote connections.
+  These are single-run harness measurements, not arbitrary-DAG performance or
+  a universal terminal-theme contrast claim.
+
+Local evidence is retained in the primary checkout under
+`aye-view/test/viewer-features-20260923/`: `colors-review.json`,
+`candidate/result.json` and `colors-integration/result.json`, plus copied full
+integration artifacts. In the candidate probe, `source_head` identifies the
+primary checkout at probe time; `installed_source_commit` explicitly identifies
+candidate `b16943a`. The full-suite report also pins that candidate and binary hash.
+Developer commands were captured in the agent transcript; no separate developer
+log files were created.
+
+This documentation update changes no production source and does not rerun the
+Rust suite. Source integration, task completion and worktree cleanup were still
+pending when this evidence was recorded.

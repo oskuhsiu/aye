@@ -167,7 +167,10 @@ fixture started in 0.320s and reloaded in 0.678s. These are single-run
 measurements including harness overhead, from 100 chains rather than arbitrary
 dense DAGs. All canonical tasks are loaded in memory; History batches visible
 rows, not canonical data. No visual theme matrix was measured; the installed
-suite uses NO_COLOR, with colored rendering covered by Rust tests.
+suite uses NO_COLOR. The [2026-09-23 path-color checks](verification/PATH_COLORS.md)
+passed 45 Rust tests, an installed colored/monochrome crossed-pair probe and the
+five-session integration suite. They verify palette identities and neutral
+crossings, not contrast across every terminal theme.
 
 The checked 50x18 terminal supports narrow-pane navigation. At 20x6 there is no
 room for a task row; resize to browse. Missing partial-clone objects fail locally.
