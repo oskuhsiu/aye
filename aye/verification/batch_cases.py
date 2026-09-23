@@ -103,8 +103,12 @@ class Batches(RepositoryCase):
             self.assertEqual(before, self.state())
 
     def test_pause_defer_complete_and_metadata_clear(self):
+        other = self.worktree()
         task = self.create()
+        # An already-open pause records context without changing eligibility.
         self.aye('note', task, 'Historical evidence')
+        self.assertEqual([task], [r['task']['id'] for r in
+                                 self.aye('ready', '--all', cwd=other, actor='agent-b')])
         self.aye('claim', task)
         result = self.batch([
             {'op': 'note', 'id': task, 'body': 'Handoff'},
@@ -114,14 +118,37 @@ class Batches(RepositoryCase):
         self.assertEqual('ready', item['computed']['effective_state'])
         self.assertEqual(['Handoff'], [n['body'] for n in item['added_notes']])
         self.assertNotIn('notes', item['changes'])
-        result = self.batch([{'op': 'note', 'id': task, 'body': 'Shelved'}, {'op': 'defer', 'id': task}])
+        self.assertEqual('open', item['task']['status'])
+        self.assertIsNone(item['task']['claim'])
+        # A fresh session/actor uses normal acquisition, without resume.
+        self.assertEqual([task], [r['task']['id'] for r in
+                                 self.aye('ready', '--all', cwd=other, actor='agent-b')])
+        packet = self.aye('claim', '--next', cwd=other, actor='agent-b')
+        self.assertEqual('claimed', packet['outcome'])
+        self.assertEqual(task, packet['task']['id'])
+        self.assertEqual('agent-b', packet['task']['claim']['actor'])
+        self.assertEqual(['Historical evidence', 'Handoff'],
+                         [n['body'] for n in packet['task']['notes']])
+        result = self.batch([
+            {'op': 'note', 'id': task, 'body': 'Shelved'},
+            {'op': 'defer', 'id': task},
+        ], cwd=other, actor='agent-b')
         self.assertEqual('deferred', result['tasks'][0]['task']['status'])
-        self.assertEqual([], self.aye('ready'))
+        self.assertIsNone(result['tasks'][0]['task']['claim'])
+        self.assertEqual([], self.aye('ready', '--all', cwd=other, actor='agent-c'))
+        before = self.state()
+        packet = self.aye('claim', '--next', cwd=other, actor='agent-c')
+        self.assertEqual('no_ready_task', packet['outcome'])
+        self.assertIsNone(packet['task'])
+        self.assertEqual(before, self.state())
+        self.assertEqual(before, packet['state_oid'])
+        self.assertEqual([task], [r['id'] for r in packet['situation']['explanations']['items']])
+        self.assertEqual('deferred', packet['situation']['explanations']['items'][0]['effective_state'])
         result = self.batch([
             {'op': 'resume', 'id': task}, {'op': 'claim', 'id': task},
             {'op': 'update', 'id': task, 'acceptance': [], 'labels': [], 'parent': None},
             {'op': 'close', 'id': task, 'note': 'Accepted, reviewed and integrated in fixture'},
-        ])
+        ], cwd=other, actor='agent-c')
         item = result['tasks'][0]
         self.assertEqual('done', item['task']['resolution'])
         self.assertIsNone(item['task']['claim'])

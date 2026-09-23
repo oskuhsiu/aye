@@ -78,8 +78,11 @@ obsolete, remove that edge deliberately. Reopening a prerequisite is rejected
 while a dependent is in progress; arrange release by that dependent's owner first.
 Adding a blocker that is already done returns `BLOCKER_ALREADY_SATISFIED`.
 
-Ordinary pauses record a handoff note and release in one batch; reserve defer
-for explicit shelving. Deferred tasks have no automatic wake-up, deadline or
-scheduler. Resume within user-authorized scope when work should be considered
-again; existing blockers still apply. Do not migrate old deferred records merely
-to make them ready. There is no task delete command.
+Pause intent maps to existing transitions; there is no canonical `paused` status.
+Follow the [pause decision table](common.md#progress-pauses-and-completion): an
+ordinary pause uses release (note only if already open), so unblocked work stays
+ready for the next session. Defer means explicitly shelved pending confirmation.
+Deferred tasks have no automatic wake-up, deadline or scheduler. Resume within
+user-authorized scope when work should be considered again; existing blockers
+still apply. Do not migrate old deferred records merely to make them ready.
+There is no task delete command.

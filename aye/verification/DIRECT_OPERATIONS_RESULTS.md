@@ -85,3 +85,37 @@ claim locking. The skill explains these exceptions and retains read-only recover
 
 No real source push or task sync was part of this delivery. Local fixture sync
 coverage in the existing regression suite does not publish this project's refs.
+
+
+## Pause readiness clarification (2026-09-23)
+
+The ordinary-pause versus explicit-shelving decision is now explicit in the
+portable skill, including its worktree-resumption entry point. A session pause
+for any reason uses a handoff note plus release (note only if already open).
+Unblocked work remains eligible for the next session without resume or an extra
+pause-specific confirmation. Explicit shelving uses defer until authorized
+resumption. Genuine dependencies and manual blockers remain in force.
+
+No Rust, canonical schema, viewer, or readiness algorithm changed. Before edits,
+the installed aye 0.3.0 pause/defer test and a separate linked-worktree/fresh-actor
+probe both passed; no runtime readiness defect was reproduced. The probe observed
+ordinary pause followed by a fresh actor's successful next-claim, explicit deferral
+remaining excluded, and explicit resume restoring eligibility. The change makes
+the agent's intent classification precise and adds durable next-session coverage.
+
+The expanded installed-binary test at
+`batch_cases.Batches.test_pause_defer_complete_and_metadata_clear` checks both
+open-task notes and owner release, linked-worktree ready visibility, fresh-actor
+next-claim with preserved handoff notes, and deferred no-ready/no-write behavior.
+It retains the existing explicit resume, completion and metadata assertions.
+It passed alongside all three `domain_cases` tests, which cover ownership guards,
+manual/dependency blockers and deferred resume retaining a real blocker:
+
+```sh
+cd aye/verification
+python3 -m unittest batch_cases.Batches.test_pause_defer_complete_and_metadata_clear domain_cases -v
+```
+
+These four checks use the Cargo-installed executable. No binary reinstall or Rust
+suite rerun was necessary because runtime source was unchanged. CLI checks prove
+transitions and selection, not universal natural-language intent recognition.

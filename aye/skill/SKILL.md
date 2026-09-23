@@ -13,8 +13,9 @@ no handler, runtime role or model-routing configuration is required.
 
 ## Read what the operation needs
 
-- **Everyday task work:** read [Common workflow](refs/common.md) first. It covers
-  direct task acquisition, atomic batches, acceptance, pauses and completion.
+- **Starting, pausing, deferring or completing task work:** read
+  [Common workflow](refs/common.md) first. It distinguishes ordinary pauses from
+  explicit shelving and covers acquisition, atomic batches and acceptance.
 - **Constructing batch requests beyond the common examples:** read
   [Atomic batch reference](refs/batches.md) for operation fields and clearing rules.
 - **Starting, resuming or cleaning up a worktree:** read

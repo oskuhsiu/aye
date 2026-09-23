@@ -123,7 +123,26 @@ consult [Atomic batch reference](batches.md) when constructing those requests.
 
 Record actual decisions, checks and remaining work. Notes append; correct earlier
 facts with a new note. For one longer note, `aye --json note TASK_ID --file evidence.md`
-remains available. For an ordinary pause, batch the handoff note and release:
+remains available.
+
+Choose the transition from the intended next-session availability:
+
+| Intent | Action | Next authorized work session |
+| --- | --- | --- |
+| Ordinary pause, for any reason | Handoff note + owner `release`; note only if already open | Unblocked work remains in `ready` and eligible for `claim --next`; no `resume` or pause-specific confirmation |
+| Explicit shelving pending confirmation | Handoff note + `defer` | Excluded from `ready` and `claim --next` until authorized `resume`; existing blockers still apply |
+
+Treat an unqualified pause, "stop for now" or "continue next time" as an ordinary
+pause. Session reasons such as time, compute/context limits or switching work
+belong in the handoff note; they do not create a task blocker or imply shelving.
+Use defer when the user explicitly wants work held out of normal selection until
+confirmation. Record that intent and the condition for resumption. Existing
+user authorization covering resumption is sufficient; do not ask again.
+
+An ordinary pause preserves genuine prerequisites and manual blockers. An
+already-blocked task remains blocked because of those prerequisites, not because
+it was paused. Readiness does not authorize continuing after a request to stop.
+For an ordinary pause of owned work, batch the handoff note and release:
 
 ```json
 {
@@ -135,11 +154,10 @@ remains available. For an ordinary pause, batch the handoff note and release:
 }
 ```
 
-Replace the illustrative ID and checkout facts with observed values. For an
-already-open task, append only the note. Release makes only unblocked work eligible
-again; it does not authorize immediate execution. Explicit shelving uses the same
-note plus `defer`. Resume deferred work only within user-authorized scope. Both
-preserve unfinished changes and checkouts; see [Tasks and states](tasks-and-states.md).
+Replace the illustrative ID and checkout facts with observed values. Both pause
+paths preserve unfinished changes and checkouts; follow
+[Worktree context](worktrees.md) when returning. Use the normal claim flow for
+ordinary paused work; only deferred work needs the authorized resume transition.
 
 For a discovered prerequisite, batch its create (with `discovered_from` set to the
 original full ID) and a `block` of the original with `by` referencing its alias.

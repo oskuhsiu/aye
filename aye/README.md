@@ -95,9 +95,13 @@ operations are create, update, note, block, unblock, claim, ordinary release,
 defer, resume, close and reopen. Sync, forced release, configuration, conflict
 resolution and source/filesystem actions remain separate.
 
-For an ordinary pause, batch a note with `body` containing observed progress,
-remaining checks and checkout facts, followed by `release` of the same full ID.
-An already-open task needs only the note. Explicit shelving uses note plus `defer`.
+For an ordinary pause, whatever the session reason, batch a note with `body`
+containing observed progress, remaining checks and checkout facts, followed by
+`release` of the same full ID. An already-open task needs only the note. Unblocked
+work stays in `ready` for the next session's `claim --next`, without `resume` or
+pause-specific confirmation. Explicit shelving pending confirmation uses note
+plus `defer` and stays excluded until authorized resumption. Session pause reasons
+belong in notes; genuine task prerequisites still govern readiness.
 A discovered prerequisite can be created with an alias, then used by a `block`
 operation's `by` reference in the same batch. Blocking releases an active claim;
 only `closed(done)` satisfies a dependency. Cancellation keeps dependents blocked.

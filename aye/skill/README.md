@@ -69,7 +69,10 @@ comparison remains available before choosing scope. Already-decided multi-task
 plans, progress and lifecycle changes use an atomic `apply --file` request.
 Compatibility checks belong at setup or an actual error, not every operation.
 
-Ordinary pauses record a handoff note and release; explicit shelving uses defer.
+An ordinary pause for any session reason records a handoff note and releases the
+claim (note only if already open). Unblocked work stays ready for the next session
+without a separate resume or confirmation. Explicit shelving pending confirmation
+uses defer and stays out of ready until authorized resumption; real blockers remain.
 Lost output requires inspection before retrying, since replay is not exactly-once.
 Source changes, task completion and remote task publication are separate results.
 The agent should record actual verification evidence before closing work as done.

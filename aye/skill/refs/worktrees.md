@@ -46,11 +46,15 @@ in the current note.
 
 ## Interrupt and resume
 
-Batch release, defer or block with a handoff note containing the machine, worktree,
-branch, current commit, uncommitted-work status, completed checks and next step.
-Preserve unfinished changes and the checkout needed to recover them. Task
-lifecycle commands do not remove worktrees. A commit ID alone does not preserve
-uncommitted changes or make a local branch available on another machine.
+Choose ordinary pause or explicit shelving using the
+[pause decision table](common.md#progress-pauses-and-completion). Use block only
+for a genuine unmet prerequisite, not the reason a session stopped. Batch the
+chosen transition with a handoff note containing the machine, worktree, branch,
+current commit, uncommitted-work status, completed checks and next step. An
+already-open ordinary pause needs only the note. Preserve unfinished changes and
+the checkout needed to recover them. Task lifecycle commands do not remove
+worktrees. A commit ID alone does not preserve uncommitted changes or make a
+local branch available on another machine.
 
 On resumption:
 
@@ -72,11 +76,14 @@ On resumption:
    those are unavailable, report the missing recovery input. Remote task notes
    can name source commits or branches that have not been published. Preserve
    unrelated directories and changes when a path or branch does not match.
-4. Check status and ownership before editing. Resume a deferred task and claim
-   it when ready; release/block/defer clears the old claim. For an in-progress
-   task, follow [claim recovery](diagnostics.md#recover-an-abandoned-claim) if the
-   owner changed. Verify any retained claim belongs to this execution. Append
-   the verified checkout and next step before continuing.
+4. Check status and ownership before editing. Ordinary paused work is already
+   open: claim it when ready, with no resume or pause-specific confirmation.
+   Resume deferred work only when user authorization covers taking it off the
+   shelf, then claim it when ready. Release/block/defer clears the old claim.
+   For an in-progress task, follow
+   [claim recovery](diagnostics.md#recover-an-abandoned-claim) if the owner changed.
+   Verify any retained claim belongs to this execution. Append the verified
+   checkout and next step before continuing.
 
 ## Complete and clean up
 
