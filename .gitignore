@@ -9,9 +9,9 @@ Thumbs.db
 Desktop.ini
 
 # Local agent instructions and handoff files (owner's prior preference).
-/AGENTS.md
-/ARCHITECTURE.md
-/handoff.md
+AGENTS.md
+ARCHITECTURE.md
+handoff.md
 /CLAUDE.md
 /.agents/
 /.codex/
