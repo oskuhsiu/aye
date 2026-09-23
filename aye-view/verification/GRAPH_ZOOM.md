@@ -63,3 +63,50 @@ or repository fingerprint probe was performed. Independent review, installed
 PTY acceptance, source integration and worktree cleanup remain primary-owned.
 No separate developer log files were created; command outputs are in the agent
 transcript.
+
+
+## Independent review and installed acceptance
+
+On 2026-09-23 the primary verified candidate
+`024a0b6d6dbdc3d8dd58c301fcacf16c28dcd50a`, the production source covered by
+51 passing Rust tests above. Independent Standards and Spec static reviews each
+reported zero findings. The installed `/Users/apple/.cargo/bin/aye-view` had
+SHA-256 `6500ba2e7653c0610ca1be5fe186c8422b56306cfbaa423e5a09121b0be11391`.
+
+- The dedicated installed zoom PTY captured 36 frames. In the same 50x18 terminal,
+  Standard displayed one complete chain node and Compact displayed two. Actual
+  key flows verified selected details, Focus and filters, offscreen selection
+  with pan/zoom, limit no-ops and reset, List/History/Detail/Search key isolation,
+  tiny-to-wide resize and Help. Repository fingerprints were unchanged, terminal
+  state was restored and no Git subprocesses were invoked.
+- Two additional colored/NO_COLOR PTYs captured four frames through Compact.
+  Independent source strokes retained `00cdcd` and `cd00cd`, `╳` was neutral,
+  and NO_COLOR had no route colors. Both sessions restored their terminals and
+  preserved repository fingerprints without Git subprocesses.
+- The complete installed suite passed five sessions / 37 frames, including
+  read-only behavior, live refresh and error recovery. The 10,000-total /
+  1,000-active / 100-ready fixture started in 0.2610s and reloaded in 0.5918s.
+  No Git subprocesses or configured-remote connections were observed. These are
+  single-run measurements with harness overhead, not dense-DAG guarantees.
+- The primary visually inspected decoded Standard/Compact, panned-context and
+  Help frames. No general terminal-theme contrast matrix was measured.
+
+Evidence is retained in the primary checkout at
+`aye-view/test/viewer-features-20260923/`: `zoom-review.json`,
+`zoom-runtime-retry/result.json`, `compact-colors/result.json` and
+`zoom-integration/result.json`, alongside full copied integration artifacts.
+Probe `primary_source_head` / `source_head` fields identify the primary checkout
+at probe time; `installed_source_commit` pins `024a0b6`. The full suite pins the
+same source and binary hash.
+
+The first `zoom-runtime` attempt failed a harness predicate expecting the full
+word `filtered`, which the narrow header clipped to `filtere`. The corrected
+predicate checks the visible one-task count; the failed evidence was retained.
+An initial complete-node summary counted a routing-bend corner as a node. The
+primary corrected the saved-frame metric to full node borders (one versus two)
+and updated the probe accordingly. Neither correction required production code
+changes.
+
+This final evidence update is documentation-only; the full Rust suite was not
+rerun. Source integration, task completion and developer-worktree cleanup were
+pending when this record was written.

@@ -171,7 +171,12 @@ rows, not canonical data. No visual theme matrix was measured; the installed
 suite uses NO_COLOR. The [2026-09-23 path-color checks](verification/PATH_COLORS.md)
 passed 45 Rust tests, an installed colored/monochrome crossed-pair probe and the
 five-session integration suite. They verify palette identities and neutral
-crossings, not contrast across every terminal theme.
+crossings, not contrast across every terminal theme. The subsequent
+[zoom acceptance checks](verification/GRAPH_ZOOM.md) passed 51 Rust tests, a
+36-frame installed zoom session, four colored/monochrome frames and the complete
+five-session integration suite. In a 50x18 chain view, Compact showed two complete
+nodes versus one in Standard. The latest scale run started in 0.2610s and reloaded
+in 0.5918s, subject to the same single-run limits.
 
 The checked 50x18 terminal supports narrow-pane navigation. At 20x6 there is no
 room for a task row; resize to browse. Missing partial-clone objects fail locally.
