@@ -384,3 +384,116 @@ fn long_edge_departure_arrival_tracks_never_share_independent_segments() {
         }
     }
 }
+
+fn color_frame(graph: &Graph, state: &State, colors: bool) -> Buffer {
+    let mut terminal = Terminal::new(TestBackend::new(160, 160)).unwrap();
+    terminal
+        .draw(|f| {
+            draw(
+                f,
+                f.area(),
+                graph,
+                state,
+                graph.nodes.keys().next().map(String::as_str),
+                Viewport::default(),
+                colors,
+            )
+        })
+        .unwrap();
+    terminal.backend().buffer().clone()
+}
+fn point_color(frame: &Buffer, point: (i64, i64)) -> Color {
+    frame[(point.0 as u16, point.1 as u16)].fg
+}
+#[test]
+fn source_colors_crossings_convergence_and_monochrome() {
+    let state = crossing_fixture();
+    let ids = current_ids(&state);
+    let graph = Graph::new(&state, &ids);
+    let frame = color_frame(&graph, &state, true);
+    let sources: Vec<_> = graph
+        .edges
+        .iter()
+        .filter(|e| graph.nodes[&e.prerequisite].layer == 0)
+        .collect();
+    assert_eq!(point_color(&frame, sources[0].points[0]), Color::Cyan);
+    assert_eq!(point_color(&frame, sources[1].points[0]), Color::Magenta);
+    for cell in frame.content.iter().filter(|c| c.symbol() == "╳") {
+        assert_eq!(cell.fg, Color::Reset);
+    }
+    let incoming: Vec<_> = graph
+        .edges
+        .iter()
+        .filter(|e| graph.nodes[&e.dependent].layer == 2)
+        .collect();
+    assert_eq!(incoming.len(), 2);
+    assert_eq!(point_color(&frame, incoming[0].points[0]), Color::Cyan);
+    assert_eq!(point_color(&frame, incoming[1].points[0]), Color::Magenta);
+    let end = *incoming[0].points.last().unwrap();
+    assert_eq!(point_color(&frame, (end.0 - 1, end.1)), Color::Reset);
+    assert_eq!(incoming[0].points.last(), incoming[1].points.last());
+    assert_eq!(
+        point_color(&frame, *incoming[0].points.last().unwrap()),
+        Color::Reset
+    );
+    let mut reordered = state.clone();
+    for task in reordered.tasks.values_mut() {
+        task.depends_on.reverse();
+    }
+    let mut reversed_ids = ids.clone();
+    reversed_ids.reverse();
+    let reordered_graph = Graph::new(&reordered, &reversed_ids);
+    assert_eq!(graph, reordered_graph);
+    assert_eq!(frame, color_frame(&reordered_graph, &reordered, true));
+    let mut reversed_edges = graph.clone();
+    reversed_edges.edges.reverse();
+    assert_eq!(frame, color_frame(&reversed_edges, &state, true));
+    assert_eq!(frame, color_frame(&graph, &state, true));
+    let mono = color_frame(&graph, &state, false);
+    assert!(mono.content.iter().all(|c| c.fg == Color::Reset));
+    for (colored, plain) in frame.content.iter().zip(&mono.content) {
+        assert_eq!(colored.symbol(), plain.symbol());
+        assert_eq!(colored.modifier, plain.modifier);
+    }
+    for node in graph.nodes.values() {
+        assert_eq!(
+            point_color(&frame, (node.x, node.y)),
+            task_style(&state, &state.tasks[&node.id], true)
+                .fg
+                .unwrap_or(Color::Reset)
+        );
+    }
+}
+#[test]
+fn source_colors_fanout_and_crowded_layer_cycle_by_full_id() {
+    let mut state = State::empty();
+    for i in 0..9 {
+        let mut source = Task::new(format!("source {i}"), NOW);
+        source.id = format!("t-{i:020x}");
+        // Layout order differs from full-ID order; palette must not follow priority.
+        source.priority = if i % 2 == 0 { "P1" } else { "P2" }.into();
+        for branch in 0..2 {
+            let mut target = Task::new(format!("target {i}/{branch}"), NOW);
+            target.id = format!("t-{:020x}", 100 + i * 2 + branch);
+            target.depends_on = vec![source.id.clone()];
+            state.tasks.insert(target.id.clone(), target);
+        }
+        state.tasks.insert(source.id.clone(), source);
+    }
+    let graph = Graph::new(&state, &current_ids(&state));
+    let frame = color_frame(&graph, &state, true);
+    let palette = [
+        Color::Cyan,
+        Color::Magenta,
+        Color::Yellow,
+        Color::Blue,
+        Color::Green,
+        Color::Red,
+    ];
+    for edge in &graph.edges {
+        let index = usize::from_str_radix(&edge.prerequisite[2..], 16).unwrap();
+        let expected = palette[index % palette.len()];
+        assert_eq!(point_color(&frame, edge.points[0]), expected);
+        assert_eq!(point_color(&frame, *edge.points.last().unwrap()), expected);
+    }
+}

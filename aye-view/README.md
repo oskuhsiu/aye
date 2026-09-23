@@ -43,6 +43,12 @@ A cancelled prerequisite still blocks its dependents. Parent and discovery
 relationships appear in details, not as graph edges. A manual blocker adds no
 synthetic node. `╳` marks a crossing without a join.
 
+Dependency paths use a repeating cyan, magenta, yellow, blue, green, red palette.
+Within each visible layer, full source IDs are sorted to assign colors; branches
+from one source keep the same color. Mixed-source crossings, convergence strokes
+and shared arrowheads are neutral. Colors identify paths, not task status; node
+colors retain their status meaning. Scope changes may reassign path colors.
+
 | Symbol | State | Meaning |
 | --- | --- | --- |
 | `●` | ready | Open, no manual blocker, and all prerequisites are done |
@@ -165,5 +171,5 @@ suite uses NO_COLOR, with colored rendering covered by Rust tests.
 
 The checked 50x18 terminal supports narrow-pane navigation. At 20x6 there is no
 room for a task row; resize to browse. Missing partial-clone objects fail locally.
-Dependency path colors and standard/compact zoom are deferred; there are no zoom
+Standard/compact zoom is deferred; there are no zoom
 keys or persistent layout settings in this version.

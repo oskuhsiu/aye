@@ -246,7 +246,7 @@ pub fn draw(
         area,
         viewport,
     };
-    canvas.edges(graph);
+    canvas.edges(graph, colors);
     for node in graph.nodes.values() {
         if node.x + NODE_WIDTH <= viewport.x
             || node.x >= viewport.x + i64::from(area.width)
@@ -336,6 +336,41 @@ fn truncate(text: &str, width: usize) -> String {
     result.push('…');
     result
 }
+// ANSI colors follow the terminal theme. Palette position is scoped to the
+// visible layer and sorted by full source ID, independent of routing order.
+const PATH_PALETTE: [Color; 6] = [
+    Color::Cyan,
+    Color::Magenta,
+    Color::Yellow,
+    Color::Blue,
+    Color::Green,
+    Color::Red,
+];
+fn source_styles(graph: &Graph, colors: bool) -> BTreeMap<&str, Style> {
+    if !colors {
+        return BTreeMap::new();
+    }
+    let sources: BTreeSet<_> = graph
+        .edges
+        .iter()
+        .map(|edge| {
+            (
+                graph.nodes[&edge.prerequisite].layer,
+                edge.prerequisite.as_str(),
+            )
+        })
+        .collect();
+    let mut counts = BTreeMap::<usize, usize>::new();
+    sources
+        .into_iter()
+        .map(|(layer, id)| {
+            let index = counts.entry(layer).or_default();
+            let style = Style::default().fg(PATH_PALETTE[*index % PATH_PALETTE.len()]);
+            *index += 1;
+            (id, style)
+        })
+        .collect()
+}
 const NORTH: u8 = 1;
 const EAST: u8 = 2;
 const SOUTH: u8 = 4;
@@ -348,6 +383,16 @@ struct Stroke {
     same_target: bool,
 }
 impl Stroke {
+    fn style(self, graph: &Graph, styles: &BTreeMap<&str, Style>) -> Style {
+        if self.same_source {
+            self.first_edge
+                .and_then(|index| styles.get(graph.edges[index].prerequisite.as_str()))
+                .copied()
+                .unwrap_or_default()
+        } else {
+            Style::default()
+        }
+    }
     fn symbol(self) -> &'static str {
         if !self.same_source && !self.same_target {
             return "╳";
@@ -407,7 +452,8 @@ impl Canvas<'_> {
             }
         }
     }
-    fn edges(&mut self, graph: &Graph) {
+    fn edges(&mut self, graph: &Graph, colors: bool) {
+        let styles = source_styles(graph, colors);
         // Only visible cells carry routing metadata, regardless of world dimensions.
         let mut strokes =
             vec![Stroke::default(); usize::from(self.area.width) * usize::from(self.area.height)];
@@ -454,14 +500,18 @@ impl Canvas<'_> {
                         self.viewport.x + i64::from(x),
                         self.viewport.y + i64::from(y),
                         stroke.symbol(),
-                        Style::default(),
+                        stroke.style(graph, &styles),
                     );
                 }
             }
         }
         for edge in &graph.edges {
-            if let Some(&(x, y)) = edge.points.last() {
-                self.cell(x, y, "→", Style::default());
+            if let Some(&(x, y)) = edge.points.last()
+                && let Some((sx, sy)) = self.position(x, y)
+            {
+                let stroke = strokes[usize::from(sy - self.area.y) * usize::from(self.area.width)
+                    + usize::from(sx - self.area.x)];
+                self.cell(x, y, "→", stroke.style(graph, &styles));
             }
         }
     }
