@@ -1,4 +1,5 @@
 mod assignment;
+mod batch;
 mod cli;
 mod domain;
 pub mod error;

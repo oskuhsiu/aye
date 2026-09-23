@@ -3,7 +3,7 @@ use crate::domain::{Action, Update};
 use crate::error::{Error, Result};
 use crate::model::Task;
 use crate::store::{Snapshot, Store};
-use crate::{domain, projection, store, sync};
+use crate::{batch, domain, projection, store, sync};
 use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 
@@ -119,6 +119,11 @@ enum Commands {
         packet: bool,
         #[command(flatten)]
         filters: Filters,
+    },
+    /// Apply a version-1 JSON batch atomically (at most 100 operations / 1 MiB).
+    Apply {
+        #[arg(long, help = "UTF-8 JSON request path, or - for stdin")]
+        file: String,
     },
     /// Release a claim; forced recovery requires an attributed reason.
     Release {
@@ -449,6 +454,14 @@ fn execute(cli: &Cli) -> Result<Reply> {
                 return Ok(Reply { data, warnings });
             }
             Action::Claim(id.clone().expect("clap requires id or --next"))
+        }
+        Commands::Apply { file } => {
+            return Ok(Reply::plain(batch::execute(
+                &store,
+                file,
+                actor.as_deref(),
+                &now,
+            )?));
         }
         Commands::Release { id, force, reason } => Action::Release {
             id: id.clone(),
