@@ -119,3 +119,15 @@ python3 -m unittest batch_cases.Batches.test_pause_defer_complete_and_metadata_c
 These four checks use the Cargo-installed executable. No binary reinstall or Rust
 suite rerun was necessary because runtime source was unchanged. CLI checks prove
 transitions and selection, not universal natural-language intent recognition.
+
+
+Independent Standards and Spec review passed candidate `894897d` with no findings.
+The reviewer reran the changed installed CLI test successfully and reviewed six
+scenarios: stopping for context limits, pausing already-open work, explicit
+shelving pending confirmation, next-session ordinary acquisition, already-authorized
+deferred resumption, and pausing with a genuine prerequisite outstanding. These
+were scenario reviews, not live natural-language agent execution. Skill validation,
+all 27 relative skill links and whitespace checks passed. Local baseline, review
+and fixture artifacts are retained under `aye/test/pause-readiness-20260923/` in
+the primary checkout. Source publication and task synchronization are separate;
+neither is part of this clarification.
