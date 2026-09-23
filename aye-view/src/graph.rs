@@ -11,9 +11,35 @@ use ratatui::{
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use unicode_segmentation::UnicodeSegmentation;
 
-pub const NODE_WIDTH: i64 = 28;
-pub const NODE_HEIGHT: i64 = 4;
-const ROW_STEP: i64 = 6;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Density {
+    #[default]
+    Standard,
+    Compact,
+}
+impl Density {
+    pub fn node_width(self) -> i64 {
+        match self {
+            Self::Standard => 28,
+            Self::Compact => 20,
+        }
+    }
+    pub fn node_height(self) -> i64 {
+        4
+    }
+    fn row_step(self) -> i64 {
+        match self {
+            Self::Standard => 6,
+            Self::Compact => 5,
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Standard => "Standard",
+            Self::Compact => "Compact",
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Node {
     pub id: String,
@@ -29,6 +55,7 @@ pub struct Edge {
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Graph {
+    pub density: Density,
     pub nodes: BTreeMap<String, Node>,
     pub edges: Vec<Edge>,
     pub width: i64,
@@ -41,6 +68,11 @@ pub struct Viewport {
 }
 impl Graph {
     pub fn new(state: &State, visible_ids: &[String]) -> Self {
+        Self::with_density(state, visible_ids, Density::Standard)
+    }
+    pub fn with_density(state: &State, visible_ids: &[String], density: Density) -> Self {
+        let node_width = density.node_width();
+        let node_height = density.node_height();
         let included: BTreeSet<_> = visible_ids
             .iter()
             .filter(|id| state.tasks.contains_key(*id))
@@ -83,7 +115,10 @@ impl Graph {
                 }
             }
         }
-        let mut graph = Self::default();
+        let mut graph = Self {
+            density,
+            ..Self::default()
+        };
         let mut visited = BTreeSet::new();
         let mut base_y = 0;
         for root in &ids {
@@ -128,7 +163,7 @@ impl Graph {
             let mut columns = vec![0; last_layer + 1];
             for layer in 0..last_layer {
                 let gap = (track_counts.get(&layer).copied().unwrap_or(0) as i64 * 2 + 3).max(8);
-                columns[layer + 1] = columns[layer] + NODE_WIDTH + gap;
+                columns[layer + 1] = columns[layer] + node_width + gap;
             }
             let node_y = base_y + long_count * 2;
             let mut rows: BTreeMap<usize, i64> = BTreeMap::new();
@@ -141,7 +176,7 @@ impl Graph {
                         id: id.clone(),
                         layer,
                         x: columns[layer],
-                        y: node_y + *row * ROW_STEP,
+                        y: node_y + *row * density.row_step(),
                     },
                 );
                 *row += 1;
@@ -150,17 +185,17 @@ impl Graph {
             for ((from, to), (departure, arrival)) in edges.into_iter().zip(tracks) {
                 let a = &graph.nodes[from];
                 let b = &graph.nodes[to];
-                let start = (a.x + NODE_WIDTH, a.y + 1);
+                let start = (a.x + node_width, a.y + 1);
                 let end = (b.x - 1, b.y + 2);
                 let points = if b.layer == a.layer + 1 {
-                    let mid = a.x + NODE_WIDTH + 1 + departure as i64 * 2;
+                    let mid = a.x + node_width + 1 + departure as i64 * 2;
                     vec![start, (mid, start.1), (mid, end.1), end]
                 } else {
                     let track = base_y + long_index * 2;
                     long_index += 1;
-                    let left = a.x + NODE_WIDTH + 1 + departure as i64 * 2;
+                    let left = a.x + node_width + 1 + departure as i64 * 2;
                     let right = columns[b.layer - 1]
-                        + NODE_WIDTH
+                        + node_width
                         + 1
                         + arrival.expect("long edge arrival track") as i64 * 2;
                     vec![
@@ -178,33 +213,35 @@ impl Graph {
                     points,
                 });
             }
-            base_y = node_y + rows.values().max().copied().unwrap_or(0) * ROW_STEP + 2;
+            base_y = node_y + rows.values().max().copied().unwrap_or(0) * density.row_step() + 2;
         }
         graph.width = graph
             .nodes
             .values()
-            .map(|n| n.x + NODE_WIDTH)
+            .map(|n| n.x + node_width)
             .max()
             .unwrap_or(0);
         graph.height = graph
             .nodes
             .values()
-            .map(|n| n.y + NODE_HEIGHT)
+            .map(|n| n.y + node_height)
             .max()
             .unwrap_or(0);
         graph
     }
     pub fn reveal(&self, id: &str, viewport: &mut Viewport, width: u16, height: u16) {
+        let node_width = self.density.node_width();
+        let node_height = self.density.node_height();
         if let Some(n) = self.nodes.get(id) {
             if n.x < viewport.x {
                 viewport.x = n.x;
-            } else if n.x + NODE_WIDTH > viewport.x + i64::from(width) {
-                viewport.x = (n.x + NODE_WIDTH - i64::from(width)).min(n.x).max(0);
+            } else if n.x + node_width > viewport.x + i64::from(width) {
+                viewport.x = (n.x + node_width - i64::from(width)).min(n.x).max(0);
             }
             if n.y < viewport.y {
                 viewport.y = n.y;
-            } else if n.y + NODE_HEIGHT > viewport.y + i64::from(height) {
-                viewport.y = (n.y + NODE_HEIGHT - i64::from(height)).min(n.y).max(0);
+            } else if n.y + node_height > viewport.y + i64::from(height) {
+                viewport.y = (n.y + node_height - i64::from(height)).min(n.y).max(0);
             }
         }
     }
@@ -241,6 +278,8 @@ pub fn draw(
     viewport: Viewport,
     colors: bool,
 ) {
+    let node_width = graph.density.node_width();
+    let node_height = graph.density.node_height();
     let mut canvas = Canvas {
         buffer: frame.buffer_mut(),
         area,
@@ -248,9 +287,9 @@ pub fn draw(
     };
     canvas.edges(graph, colors);
     for node in graph.nodes.values() {
-        if node.x + NODE_WIDTH <= viewport.x
+        if node.x + node_width <= viewport.x
             || node.x >= viewport.x + i64::from(area.width)
-            || node.y + NODE_HEIGHT <= viewport.y
+            || node.y + node_height <= viewport.y
             || node.y >= viewport.y + i64::from(area.height)
         {
             continue;
@@ -261,36 +300,36 @@ pub fn draw(
         if chosen {
             style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
         }
-        for dy in 0..NODE_HEIGHT {
-            for dx in 0..NODE_WIDTH {
+        for dy in 0..node_height {
+            for dx in 0..node_width {
                 canvas.cell(node.x + dx, node.y + dy, " ", style);
             }
         }
         canvas.line(
             (node.x + 1, node.y),
-            (node.x + NODE_WIDTH - 2, node.y),
+            (node.x + node_width - 2, node.y),
             style,
         );
         canvas.line(
-            (node.x + 1, node.y + NODE_HEIGHT - 1),
-            (node.x + NODE_WIDTH - 2, node.y + NODE_HEIGHT - 1),
+            (node.x + 1, node.y + node_height - 1),
+            (node.x + node_width - 2, node.y + node_height - 1),
             style,
         );
         canvas.line(
             (node.x, node.y + 1),
-            (node.x, node.y + NODE_HEIGHT - 2),
+            (node.x, node.y + node_height - 2),
             style,
         );
         canvas.line(
-            (node.x + NODE_WIDTH - 1, node.y + 1),
-            (node.x + NODE_WIDTH - 1, node.y + NODE_HEIGHT - 2),
+            (node.x + node_width - 1, node.y + 1),
+            (node.x + node_width - 1, node.y + node_height - 2),
             style,
         );
         for (dx, dy, symbol) in [
             (0, 0, "┌"),
-            (NODE_WIDTH - 1, 0, "┐"),
-            (0, NODE_HEIGHT - 1, "└"),
-            (NODE_WIDTH - 1, NODE_HEIGHT - 1, "┘"),
+            (node_width - 1, 0, "┐"),
+            (0, node_height - 1, "└"),
+            (node_width - 1, node_height - 1, "┘"),
         ] {
             canvas.cell(node.x + dx, node.y + dy, symbol, style);
         }
@@ -303,7 +342,7 @@ pub fn draw(
         canvas.text(
             node.x + 1,
             node.y + 1,
-            &truncate(&title, (NODE_WIDTH - 2) as usize),
+            &truncate(&title, (node_width - 2) as usize),
             style,
         );
         let subtitle = task
@@ -314,7 +353,7 @@ pub fn draw(
         canvas.text(
             node.x + 1,
             node.y + 2,
-            &truncate(&subtitle, (NODE_WIDTH - 2) as usize),
+            &truncate(&subtitle, (node_width - 2) as usize),
             style,
         );
     }

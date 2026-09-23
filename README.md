@@ -45,6 +45,7 @@ join. Status symbols remain meaningful without color; `NO_COLOR` disables colors
 | Left / Ctrl-h, Right / l | Select a visible prerequisite or dependent in Graph |
 | Up / k, Down / j | Same-layer graph navigation, list movement, or focused text scrolling |
 | Shift-arrows | Pan Graph without changing selection |
+| `-`, `+` / `=`, `0` | Graph Main: Compact, Standard, reset to Standard |
 | Tab | Graph/List; in History, switch pane |
 | Enter, Esc | Open details / go back |
 | `/`, `f` | Search title/ID/labels, or filter state/priority/type/label/claimant |
@@ -66,7 +67,9 @@ Integrated viewer validation passed with a 10,000-task fixture (1,000 active,
 single-run observations for a chain-shaped graph, not performance guarantees
 for arbitrary dense graphs. See [results and limits](aye-view/verification/RESULTS.md)
 and the [reproduction guide](aye-view/verification/README.md).
-Dependency path colors and graph zoom remain deferred enhancements.
+Dependency paths use source colors within each layer. Graph offers Standard and
+Compact density; zoom preserves selection and viewport context without changing
+task scope. Density is session-only; `0` resets it without recentering.
 
 ## Development checks
 

@@ -19,3 +19,6 @@ mod history_tests;
 pub mod focus;
 #[cfg(test)]
 mod focus_tests;
+
+#[cfg(test)]
+mod zoom_tests;

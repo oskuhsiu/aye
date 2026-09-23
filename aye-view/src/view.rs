@@ -138,6 +138,7 @@ fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
     } else {
         "Current Graph · prerequisite → dependent".into()
     };
+    let title = format!("{} · {title}", app.density.label());
     let block = block(&title, app.pane == Pane::Main);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -402,7 +403,7 @@ fn render_help(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Clear, area);
     let block = block("Help · j/k PgUp/Dn Scroll · Esc Back", true);
     let inner = block.inner(area);
-    let text = "Graph: Left / Ctrl-h = prerequisite\nGraph: Right / l = dependent\nGraph: Up/Down or k/j = same layer\nShift-arrows: pan without changing selection\nEnter: Detail; Esc: return to main pane\nF: focus selected ancestors and descendants\ng: full Current Graph; Esc leaves focused Main\nFocus clears filters; later filters intersect.\nTab: Graph/List (History: pane switch)\nDetail: j/k or arrows scroll; PgUp/PgDown page\n?: Help; q / Ctrl-c: Quit\n\nr: Refresh local state (poll every 500 ms)\n/ Search all tasks; arrows select; Enter reveal\nSearch outside Focus exits that focus.\nf Filters: up/down field, left/right cycle\nc clears filter draft; Enter applies; Esc cancels\nc: Recent 24h; ]: next unrelated recent task\nRecent is hidden during Focus.\nh: all closed History; Esc returns\nHistory arrows/PgUp/PgDown load more rows.\n\n● ready    ▶ in progress    ! blocked\n⏸ deferred    ✓ done    × cancelled\nCancelled prerequisites do not unlock tasks.\n\nB → A means A depends on B.\nB completion unlocks A.\nParent/discovery are detail context only.\n╳: lines cross without joining.\n\nCurrent Graph includes closed prerequisites.\nFocus root stays fixed as selection moves.";
+    let text = "Graph: Left / Ctrl-h = prerequisite\nGraph: Right / l = dependent\nGraph: Up/Down or k/j = same layer\nShift-arrows: pan without changing selection\nGraph Main: - Compact; +/= Standard; 0 reset\nZoom preserves selection and viewport context.\nEnter: Detail; Esc: return to main pane\nF: focus selected ancestors and descendants\ng: full Current Graph; Esc leaves focused Main\nFocus clears filters; later filters intersect.\nTab: Graph/List (History: pane switch)\nDetail: j/k or arrows scroll; PgUp/PgDown page\n?: Help; q / Ctrl-c: Quit\n\nr: Refresh local state (poll every 500 ms)\n/ Search all tasks; arrows select; Enter reveal\nSearch outside Focus exits that focus.\nf Filters: up/down field, left/right cycle\nc clears filter draft; Enter applies; Esc cancels\nc: Recent 24h; ]: next unrelated recent task\nRecent is hidden during Focus.\nh: all closed History; Esc returns\nHistory arrows/PgUp/PgDown load more rows.\n\n● ready    ▶ in progress    ! blocked\n⏸ deferred    ✓ done    × cancelled\nCancelled prerequisites do not unlock tasks.\n\nB → A means A depends on B.\nB completion unlocks A.\nParent/discovery are detail context only.\n╳: lines cross without joining.\n\nCurrent Graph includes closed prerequisites.\nFocus root stays fixed as selection moves.";
     let lines = wrapped_lines(text, usize::from(inner.width));
     app.help_page = usize::from(inner.height).saturating_sub(1).max(1);
     app.help_max_scroll = lines.len().saturating_sub(usize::from(inner.height));

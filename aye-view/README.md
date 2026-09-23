@@ -75,6 +75,7 @@ shortcuts. Ctrl-c quits from every mode; `q` quits outside those two dialogs.
 | Right or `l` | In Graph, select a visible dependent |
 | Up / `k`, Down / `j` | In Graph, select a same-layer neighbor; in List, move one row |
 | Shift-arrows | Pan Graph without changing the selected task |
+| `-`, `+` / `=`, `0` | Graph Main only: Compact, Standard, reset to Standard |
 | Tab | Toggle Graph/List and return to the main pane |
 | Enter | Open selected-task details |
 | Right / `l` in List or History | Open details |
@@ -174,5 +175,16 @@ crossings, not contrast across every terminal theme.
 
 The checked 50x18 terminal supports narrow-pane navigation. At 20x6 there is no
 room for a task row; resize to browse. Missing partial-clone objects fail locally.
-Standard/compact zoom is deferred; there are no zoom
-keys or persistent layout settings in this version.
+Graph starts at Standard density (28x4-cell nodes); Compact uses 20x4-cell
+nodes and tighter rows. `-` selects Compact; `+` or `=` selects Standard;
+`0` resets to Standard without recentering. The graph border names the level.
+These keys apply only in Graph Main, not List, History, Detail, Help or dialogs.
+
+Zoom retains selected task, full details, Focus, filters and search reveal.
+It keeps a visible selected node at its screen position where possible; after
+panning away, a node near the viewport center anchors the change. Bounds and
+keeping a previously fully visible selection onscreen may adjust the viewport.
+Repeated requests at the current level do nothing. Resize retains the existing
+selection-reveal behavior. Track-heavy graphs may gain less space than chains.
+Density is session-only; there are no persistent layout settings. See the
+[zoom verification record](verification/GRAPH_ZOOM.md) for checks and limits.

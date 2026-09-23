@@ -1,5 +1,5 @@
 //! Transient application state and keyboard reducer shared by the terminal and tests.
-use crate::graph::{Graph, Viewport};
+use crate::graph::{Density, Graph, Viewport};
 use crate::model::{Relations, current_ids};
 use aye::reader::ReaderSnapshot;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -26,8 +26,9 @@ pub struct App {
     pub query: crate::query::QueryState,
     pub mode: Mode,
     pub graph: Graph,
+    pub density: Density,
     pub graph_viewport: Viewport,
-    graph_key: (String, Vec<String>),
+    graph_key: (String, Vec<String>, Density),
     pub graph_anchor: Option<String>,
     pub graph_size: (u16, u16),
     pub snapshot: ReaderSnapshot,
@@ -57,7 +58,8 @@ impl App {
             query: crate::query::QueryState::default(),
             mode: Mode::Graph,
             graph: Graph::new(&snapshot.state, &visible_ids),
-            graph_key: (snapshot.oid.clone(), visible_ids.clone()),
+            density: Density::Standard,
+            graph_key: (snapshot.oid.clone(), visible_ids.clone(), Density::Standard),
             graph_viewport: Viewport::default(),
             graph_anchor: None,
             graph_size: (0, 0),
@@ -78,11 +80,84 @@ impl App {
     }
     pub fn ensure_graph(&mut self) {
         let ids = self.graph_ids();
-        if self.graph_key.0 != self.snapshot.oid || self.graph_key.1 != ids {
-            self.graph = Graph::new(&self.snapshot.state, &ids);
-            self.graph_key = (self.snapshot.oid.clone(), ids);
+        if self.graph_key.0 != self.snapshot.oid
+            || self.graph_key.1 != ids
+            || self.graph_key.2 != self.density
+        {
+            self.graph = Graph::with_density(&self.snapshot.state, &ids, self.density);
+            self.graph_key = (self.snapshot.oid.clone(), ids, self.density);
             self.graph_anchor = None;
         }
+    }
+    /// Change geometry without changing scope, selection or the user's pan.
+    pub fn set_density(&mut self, density: Density) {
+        if self.density == density {
+            return;
+        }
+        self.ensure_graph();
+        let old = self.graph_viewport;
+        let (width, height) = (i64::from(self.graph_size.0), i64::from(self.graph_size.1));
+        let node_width = self.graph.density.node_width();
+        let node_height = self.graph.density.node_height();
+        let intersects = |node: &&crate::graph::Node| {
+            width > 0
+                && height > 0
+                && node.x < old.x + width
+                && node.x + node_width > old.x
+                && node.y < old.y + height
+                && node.y + node_height > old.y
+        };
+        let selected = self
+            .selected_id
+            .as_ref()
+            .and_then(|id| self.graph.nodes.get(id));
+        let fully_visible = selected.is_some_and(|node| {
+            node.x >= old.x
+                && node.x + node_width <= old.x + width
+                && node.y >= old.y
+                && node.y + node_height <= old.y + height
+        });
+        let anchor = selected
+            .filter(intersects)
+            .or_else(|| {
+                self.graph.nodes.values().min_by_key(|node| {
+                    // Doubled centers avoid rounding ties; wide arithmetic accommodates
+                    // graphs whose world coordinates extend far beyond terminal sizes.
+                    let dx = 2 * i128::from(node.x - old.x) + i128::from(node_width - width);
+                    let dy = 2 * i128::from(node.y - old.y) + i128::from(node_height - height);
+                    (!intersects(node), dx * dx + dy * dy, &node.id)
+                })
+            })
+            .map(|node| (node.id.clone(), node.x, node.y));
+        self.density = density;
+        self.ensure_graph();
+        if let Some((id, x, y)) = anchor {
+            let node = &self.graph.nodes[&id];
+            self.graph_viewport.x = old.x + node.x - x;
+            self.graph_viewport.y = old.y + node.y - y;
+        }
+        self.clamp_graph_viewport();
+        if fully_visible && let Some(id) = &self.selected_id {
+            self.graph.reveal(
+                id,
+                &mut self.graph_viewport,
+                self.graph_size.0,
+                self.graph_size.1,
+            );
+            self.clamp_graph_viewport();
+        }
+        // Rendering must not treat the density rebuild as a new selection.
+        self.graph_anchor = self.selected_id.clone();
+    }
+    fn clamp_graph_viewport(&mut self) {
+        self.graph_viewport.x = self
+            .graph_viewport
+            .x
+            .clamp(0, (self.graph.width - i64::from(self.graph_size.0)).max(0));
+        self.graph_viewport.y = self
+            .graph_viewport
+            .y
+            .clamp(0, (self.graph.height - i64::from(self.graph_size.1)).max(0));
     }
     pub fn apply_update(&mut self, update: crate::watch::Update) {
         match update {
@@ -202,6 +277,19 @@ impl App {
         }
         if self.handle_history_key(key) {
             return;
+        }
+        if self.history.is_none() && self.mode == Mode::Graph && self.pane == Pane::Main {
+            let density = match key.code {
+                KeyCode::Char('-') => Some(Density::Compact),
+                KeyCode::Char('+') | KeyCode::Char('=') | KeyCode::Char('0') => {
+                    Some(Density::Standard)
+                }
+                _ => None,
+            };
+            if let Some(density) = density {
+                self.set_density(density);
+                return;
+            }
         }
         match key.code {
             KeyCode::Char('/') => self.open_search(),

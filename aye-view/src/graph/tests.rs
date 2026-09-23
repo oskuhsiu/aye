@@ -244,141 +244,147 @@ fn segments_share_straight(a: &Edge, b: &Edge) -> bool {
 }
 #[test]
 fn crossed_dependencies_remain_visually_distinct_paths() {
-    let state = crossing_fixture();
-    let graph = Graph::new(&state, &current_ids(&state));
-    let mut terminal = Terminal::new(TestBackend::new(130, 16)).unwrap();
-    terminal
-        .draw(|f| {
-            draw(
-                f,
-                f.area(),
-                &graph,
-                &state,
-                None,
-                Viewport::default(),
-                false,
-            )
-        })
-        .unwrap();
-    let frame = terminal.backend().buffer();
-    let text = frame
-        .content
-        .iter()
-        .map(|cell| cell.symbol())
-        .collect::<String>();
-    assert!(
-        text.contains('╳'),
-        "independent paths must visibly cross without joining: {text}"
-    );
-    for a in &graph.edges {
-        for b in &graph.edges {
-            if a.prerequisite != b.prerequisite && a.dependent != b.dependent {
-                assert!(
-                    !segments_share_straight(a, b),
-                    "independent paths share a straight segment: {a:?}, {b:?}"
-                );
+    for density in [Density::Standard, Density::Compact] {
+        let state = crossing_fixture();
+        let graph = Graph::with_density(&state, &current_ids(&state), density);
+        let mut terminal = Terminal::new(TestBackend::new(130, 16)).unwrap();
+        terminal
+            .draw(|f| {
+                draw(
+                    f,
+                    f.area(),
+                    &graph,
+                    &state,
+                    None,
+                    Viewport::default(),
+                    false,
+                )
+            })
+            .unwrap();
+        let frame = terminal.backend().buffer();
+        let text = frame
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(
+            text.contains('╳'),
+            "independent paths must visibly cross without joining: {text}"
+        );
+        for a in &graph.edges {
+            for b in &graph.edges {
+                if a.prerequisite != b.prerequisite && a.dependent != b.dependent {
+                    assert!(
+                        !segments_share_straight(a, b),
+                        "independent paths share a straight segment: {a:?}, {b:?}"
+                    );
+                }
             }
         }
-    }
-    for edge in &graph.edges {
-        let source = &graph.nodes[&edge.prerequisite];
-        let target = &graph.nodes[&edge.dependent];
-        assert_ne!(
-            edge.points[0].1 - source.y,
-            edge.points.last().unwrap().1 - target.y
-        );
-        for points in edge.points.windows(3) {
-            let (previous, corner, next) = (points[0], points[1], points[2]);
-            let expected = match (
-                previous.0 < corner.0,
-                previous.1 < corner.1,
-                next.0 > corner.0,
-                next.1 > corner.1,
-            ) {
-                (true, false, false, true) => "┐",
-                (true, false, false, false) => "┘",
-                (false, true, true, false) => "└",
-                (false, false, true, false) => "┌",
-                _ => panic!("unexpected route bend"),
-            };
-            let actual = frame[(corner.0 as u16, corner.1 as u16)].symbol();
-            // Shared target branches may form a real junction, never an independent fake junction.
-            assert!(
-                actual == expected
-                    || actual == "├"
-                    || actual == "┤"
-                    || actual == "┬"
-                    || actual == "┴"
-                    || actual == "╳",
-                "bend expected {expected}, got {actual}"
+        for edge in &graph.edges {
+            let source = &graph.nodes[&edge.prerequisite];
+            let target = &graph.nodes[&edge.dependent];
+            assert_ne!(
+                edge.points[0].1 - source.y,
+                edge.points.last().unwrap().1 - target.y
             );
+            for points in edge.points.windows(3) {
+                let (previous, corner, next) = (points[0], points[1], points[2]);
+                let expected = match (
+                    previous.0 < corner.0,
+                    previous.1 < corner.1,
+                    next.0 > corner.0,
+                    next.1 > corner.1,
+                ) {
+                    (true, false, false, true) => "┐",
+                    (true, false, false, false) => "┘",
+                    (false, true, true, false) => "└",
+                    (false, false, true, false) => "┌",
+                    _ => panic!("unexpected route bend"),
+                };
+                let actual = frame[(corner.0 as u16, corner.1 as u16)].symbol();
+                // Shared target branches may form a real junction, never an independent fake junction.
+                assert!(
+                    actual == expected
+                        || actual == "├"
+                        || actual == "┤"
+                        || actual == "┬"
+                        || actual == "┴"
+                        || actual == "╳",
+                    "bend expected {expected}, got {actual}"
+                );
+            }
+            let end = *edge.points.last().unwrap();
+            assert_eq!(frame[(end.0 as u16, end.1 as u16)].symbol(), "→");
         }
-        let end = *edge.points.last().unwrap();
-        assert_eq!(frame[(end.0 as u16, end.1 as u16)].symbol(), "→");
     }
 }
 
 #[test]
 fn long_edge_departure_arrival_tracks_never_share_independent_segments() {
-    let mut state = crossing_fixture();
-    let a = "t-00000000000000000000".to_string();
-    let b = "t-00000000000000000001".to_string();
-    let c = "t-00000000000000000002".to_string();
-    let d = "t-00000000000000000003".to_string();
-    let e = "t-00000000000000000004".to_string();
-    state.tasks.get_mut(&e).unwrap().depends_on.push(a);
-    let mut f = Task::new("F".into(), NOW);
-    f.id = "t-00000000000000000005".into();
-    f.depends_on = vec![b, c, d];
-    state.tasks.insert(f.id.clone(), f);
-    state.validate().unwrap();
-    let graph = Graph::new(&state, &current_ids(&state));
-    assert_eq!(
-        graph.edges.iter().filter(|e| e.points.len() == 6).count(),
-        2
-    );
-    for a in &graph.edges {
-        for b in &graph.edges {
-            if a.prerequisite != b.prerequisite && a.dependent != b.dependent {
-                assert!(
-                    !segments_share_straight(a, b),
-                    "independent long/short paths overlap: {a:?} {b:?}"
-                );
-            }
-        }
-    }
-    let mut terminal = Terminal::new(TestBackend::new(150, 24)).unwrap();
-    terminal
-        .draw(|f| {
-            draw(
-                f,
-                f.area(),
-                &graph,
-                &state,
-                None,
-                Viewport::default(),
-                false,
-            )
-        })
-        .unwrap();
-    let frame = terminal.backend().buffer();
-    assert!(frame.content.iter().any(|cell| cell.symbol() == "╳"));
-    for edge in &graph.edges {
-        for pair in edge.points.windows(2) {
-            let (a, b) = (pair[0], pair[1]);
-            if a.1 == b.1 {
-                for x in a.0.min(b.0) + 1..a.0.max(b.0) {
+    for density in [Density::Standard, Density::Compact] {
+        let mut state = crossing_fixture();
+        let a = "t-00000000000000000000".to_string();
+        let b = "t-00000000000000000001".to_string();
+        let c = "t-00000000000000000002".to_string();
+        let d = "t-00000000000000000003".to_string();
+        let e = "t-00000000000000000004".to_string();
+        state.tasks.get_mut(&e).unwrap().depends_on.push(a);
+        let mut f = Task::new("F".into(), NOW);
+        f.id = "t-00000000000000000005".into();
+        f.depends_on = vec![b, c, d];
+        state.tasks.insert(f.id.clone(), f);
+        state.validate().unwrap();
+        let graph = Graph::with_density(&state, &current_ids(&state), density);
+        assert_eq!(
+            graph.edges.iter().filter(|e| e.points.len() == 6).count(),
+            2
+        );
+        for a in &graph.edges {
+            for b in &graph.edges {
+                if a.prerequisite != b.prerequisite && a.dependent != b.dependent {
                     assert!(
-                        ["─", "┬", "┴", "┼", "╳"].contains(&frame[(x as u16, a.1 as u16)].symbol()),
-                        "horizontal path interrupted"
+                        !segments_share_straight(a, b),
+                        "independent long/short paths overlap: {a:?} {b:?}"
                     );
                 }
-            } else {
-                for y in a.1.min(b.1) + 1..a.1.max(b.1) {
-                    assert!(
-                        ["│", "├", "┤", "┼", "╳"].contains(&frame[(a.0 as u16, y as u16)].symbol()),
-                        "vertical path interrupted"
-                    );
+            }
+        }
+        let mut terminal = Terminal::new(TestBackend::new(150, 24)).unwrap();
+        terminal
+            .draw(|f| {
+                draw(
+                    f,
+                    f.area(),
+                    &graph,
+                    &state,
+                    None,
+                    Viewport::default(),
+                    false,
+                )
+            })
+            .unwrap();
+        let frame = terminal.backend().buffer();
+        assert!(frame.content.iter().any(|cell| cell.symbol() == "╳"));
+        for edge in &graph.edges {
+            for pair in edge.points.windows(2) {
+                let (a, b) = (pair[0], pair[1]);
+                if a.1 == b.1 {
+                    for x in a.0.min(b.0) + 1..a.0.max(b.0) {
+                        assert!(
+                            ["─", "┬", "┴", "┼", "╳"]
+                                .contains(&frame[(x as u16, a.1 as u16)].symbol()),
+                            "horizontal path interrupted"
+                        );
+                    }
+                } else {
+                    for y in a.1.min(b.1) + 1..a.1.max(b.1) {
+                        assert!(
+                            ["│", "├", "┤", "┼", "╳"]
+                                .contains(&frame[(a.0 as u16, y as u16)].symbol()),
+                            "vertical path interrupted"
+                        );
+                    }
                 }
             }
         }
@@ -407,93 +413,97 @@ fn point_color(frame: &Buffer, point: (i64, i64)) -> Color {
 }
 #[test]
 fn source_colors_crossings_convergence_and_monochrome() {
-    let state = crossing_fixture();
-    let ids = current_ids(&state);
-    let graph = Graph::new(&state, &ids);
-    let frame = color_frame(&graph, &state, true);
-    let sources: Vec<_> = graph
-        .edges
-        .iter()
-        .filter(|e| graph.nodes[&e.prerequisite].layer == 0)
-        .collect();
-    assert_eq!(point_color(&frame, sources[0].points[0]), Color::Cyan);
-    assert_eq!(point_color(&frame, sources[1].points[0]), Color::Magenta);
-    for cell in frame.content.iter().filter(|c| c.symbol() == "╳") {
-        assert_eq!(cell.fg, Color::Reset);
-    }
-    let incoming: Vec<_> = graph
-        .edges
-        .iter()
-        .filter(|e| graph.nodes[&e.dependent].layer == 2)
-        .collect();
-    assert_eq!(incoming.len(), 2);
-    assert_eq!(point_color(&frame, incoming[0].points[0]), Color::Cyan);
-    assert_eq!(point_color(&frame, incoming[1].points[0]), Color::Magenta);
-    let end = *incoming[0].points.last().unwrap();
-    assert_eq!(point_color(&frame, (end.0 - 1, end.1)), Color::Reset);
-    assert_eq!(incoming[0].points.last(), incoming[1].points.last());
-    assert_eq!(
-        point_color(&frame, *incoming[0].points.last().unwrap()),
-        Color::Reset
-    );
-    let mut reordered = state.clone();
-    for task in reordered.tasks.values_mut() {
-        task.depends_on.reverse();
-    }
-    let mut reversed_ids = ids.clone();
-    reversed_ids.reverse();
-    let reordered_graph = Graph::new(&reordered, &reversed_ids);
-    assert_eq!(graph, reordered_graph);
-    assert_eq!(frame, color_frame(&reordered_graph, &reordered, true));
-    let mut reversed_edges = graph.clone();
-    reversed_edges.edges.reverse();
-    assert_eq!(frame, color_frame(&reversed_edges, &state, true));
-    assert_eq!(frame, color_frame(&graph, &state, true));
-    let mono = color_frame(&graph, &state, false);
-    assert!(mono.content.iter().all(|c| c.fg == Color::Reset));
-    for (colored, plain) in frame.content.iter().zip(&mono.content) {
-        assert_eq!(colored.symbol(), plain.symbol());
-        assert_eq!(colored.modifier, plain.modifier);
-    }
-    for node in graph.nodes.values() {
+    for density in [Density::Standard, Density::Compact] {
+        let state = crossing_fixture();
+        let ids = current_ids(&state);
+        let graph = Graph::with_density(&state, &ids, density);
+        let frame = color_frame(&graph, &state, true);
+        let sources: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| graph.nodes[&e.prerequisite].layer == 0)
+            .collect();
+        assert_eq!(point_color(&frame, sources[0].points[0]), Color::Cyan);
+        assert_eq!(point_color(&frame, sources[1].points[0]), Color::Magenta);
+        for cell in frame.content.iter().filter(|c| c.symbol() == "╳") {
+            assert_eq!(cell.fg, Color::Reset);
+        }
+        let incoming: Vec<_> = graph
+            .edges
+            .iter()
+            .filter(|e| graph.nodes[&e.dependent].layer == 2)
+            .collect();
+        assert_eq!(incoming.len(), 2);
+        assert_eq!(point_color(&frame, incoming[0].points[0]), Color::Cyan);
+        assert_eq!(point_color(&frame, incoming[1].points[0]), Color::Magenta);
+        let end = *incoming[0].points.last().unwrap();
+        assert_eq!(point_color(&frame, (end.0 - 1, end.1)), Color::Reset);
+        assert_eq!(incoming[0].points.last(), incoming[1].points.last());
         assert_eq!(
-            point_color(&frame, (node.x, node.y)),
-            task_style(&state, &state.tasks[&node.id], true)
-                .fg
-                .unwrap_or(Color::Reset)
+            point_color(&frame, *incoming[0].points.last().unwrap()),
+            Color::Reset
         );
+        let mut reordered = state.clone();
+        for task in reordered.tasks.values_mut() {
+            task.depends_on.reverse();
+        }
+        let mut reversed_ids = ids.clone();
+        reversed_ids.reverse();
+        let reordered_graph = Graph::with_density(&reordered, &reversed_ids, density);
+        assert_eq!(graph, reordered_graph);
+        assert_eq!(frame, color_frame(&reordered_graph, &reordered, true));
+        let mut reversed_edges = graph.clone();
+        reversed_edges.edges.reverse();
+        assert_eq!(frame, color_frame(&reversed_edges, &state, true));
+        assert_eq!(frame, color_frame(&graph, &state, true));
+        let mono = color_frame(&graph, &state, false);
+        assert!(mono.content.iter().all(|c| c.fg == Color::Reset));
+        for (colored, plain) in frame.content.iter().zip(&mono.content) {
+            assert_eq!(colored.symbol(), plain.symbol());
+            assert_eq!(colored.modifier, plain.modifier);
+        }
+        for node in graph.nodes.values() {
+            assert_eq!(
+                point_color(&frame, (node.x, node.y)),
+                task_style(&state, &state.tasks[&node.id], true)
+                    .fg
+                    .unwrap_or(Color::Reset)
+            );
+        }
     }
 }
 #[test]
 fn source_colors_fanout_and_crowded_layer_cycle_by_full_id() {
-    let mut state = State::empty();
-    for i in 0..9 {
-        let mut source = Task::new(format!("source {i}"), NOW);
-        source.id = format!("t-{i:020x}");
-        // Layout order differs from full-ID order; palette must not follow priority.
-        source.priority = if i % 2 == 0 { "P1" } else { "P2" }.into();
-        for branch in 0..2 {
-            let mut target = Task::new(format!("target {i}/{branch}"), NOW);
-            target.id = format!("t-{:020x}", 100 + i * 2 + branch);
-            target.depends_on = vec![source.id.clone()];
-            state.tasks.insert(target.id.clone(), target);
+    for density in [Density::Standard, Density::Compact] {
+        let mut state = State::empty();
+        for i in 0..9 {
+            let mut source = Task::new(format!("source {i}"), NOW);
+            source.id = format!("t-{i:020x}");
+            // Layout order differs from full-ID order; palette must not follow priority.
+            source.priority = if i % 2 == 0 { "P1" } else { "P2" }.into();
+            for branch in 0..2 {
+                let mut target = Task::new(format!("target {i}/{branch}"), NOW);
+                target.id = format!("t-{:020x}", 100 + i * 2 + branch);
+                target.depends_on = vec![source.id.clone()];
+                state.tasks.insert(target.id.clone(), target);
+            }
+            state.tasks.insert(source.id.clone(), source);
         }
-        state.tasks.insert(source.id.clone(), source);
-    }
-    let graph = Graph::new(&state, &current_ids(&state));
-    let frame = color_frame(&graph, &state, true);
-    let palette = [
-        Color::Cyan,
-        Color::Magenta,
-        Color::Yellow,
-        Color::Blue,
-        Color::Green,
-        Color::Red,
-    ];
-    for edge in &graph.edges {
-        let index = usize::from_str_radix(&edge.prerequisite[2..], 16).unwrap();
-        let expected = palette[index % palette.len()];
-        assert_eq!(point_color(&frame, edge.points[0]), expected);
-        assert_eq!(point_color(&frame, *edge.points.last().unwrap()), expected);
+        let graph = Graph::with_density(&state, &current_ids(&state), density);
+        let frame = color_frame(&graph, &state, true);
+        let palette = [
+            Color::Cyan,
+            Color::Magenta,
+            Color::Yellow,
+            Color::Blue,
+            Color::Green,
+            Color::Red,
+        ];
+        for edge in &graph.edges {
+            let index = usize::from_str_radix(&edge.prerequisite[2..], 16).unwrap();
+            let expected = palette[index % palette.len()];
+            assert_eq!(point_color(&frame, edge.points[0]), expected);
+            assert_eq!(point_color(&frame, *edge.points.last().unwrap()), expected);
+        }
     }
 }
