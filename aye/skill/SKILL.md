@@ -1,6 +1,6 @@
 ---
 name: aye
-description: Use aye to track coding tasks, claim work across linked Git worktrees, manage blockers, and synchronize task state across clones. Use when the user requests aye or the repository uses aye for task coordination.
+description: Use aye to track coding tasks, claim work across linked Git worktrees, manage blockers, record explicitly authorized verification bypasses, and synchronize task state across clones. Use when the user requests aye or the repository uses aye for task coordination.
 ---
 
 # aye
@@ -17,10 +17,12 @@ no handler, runtime role or model-routing configuration is required.
   [Common workflow](refs/common.md) first. It distinguishes ordinary pauses from
   explicit shelving and covers acquisition, atomic batches and acceptance.
 - **Waiving unavailable verification after implementation is complete:** read
-  [Explicit verification bypass](refs/bypass.md). Never authorize a bypass without
-  an explicit user instruction or a pre-existing project policy covering it.
+  [Explicit verification bypass](refs/bypass.md). An explicit user instruction to
+  bypass is the authorization to execute it; do not ask for a duplicate
+  confirmation. Never infer authorization merely because testing is unavailable.
 - **Constructing batch requests beyond the common examples:** read
-  [Atomic batch reference](refs/batches.md) for operation fields and clearing rules.
+  [Atomic batch reference](refs/batches.md) for operation fields and clearing rules,
+  including the native `bypass` operation.
 - **Starting, resuming or cleaning up a worktree:** read
   [Worktree context](refs/worktrees.md) to record and recover the task's checkout.
 - **Metadata, filtering or lifecycle changes:** read
@@ -37,5 +39,5 @@ Use `--json` for decisions; success is `ok: true`, failures use `error.code`.
 Successful replies confirm the operation; do not add routine help/version/status
 preflights, confirmation reads or task-accepted messages. Task mutations go
 through aye, which coordinates ownership and validates state.
-Keep source work, task completion and remote synchronization as distinct results
-when reporting progress.
+Keep source work, task completion, accepted verification risk and remote
+synchronization as distinct results when reporting progress.
