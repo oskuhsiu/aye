@@ -10,11 +10,5 @@ pub mod reader;
 mod store;
 mod sync;
 
-pub use bypass::BYPASSED_LABEL;
+pub use bypass::{BYPASSED_LABEL, is_bypassed};
 pub use cli::run_cli;
-
-pub fn run() {
-    if !bypass::run_if_requested() {
-        run_cli();
-    }
-}
