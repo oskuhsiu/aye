@@ -61,7 +61,12 @@ pub fn current_ids(state: &State) -> Vec<String> {
 }
 pub fn status<'a>(state: &'a State, task: &'a Task) -> (&'static str, &'a str) {
     match state.effective(task) {
-        "closed" if task.resolution.as_deref() == Some("cancelled") => ("×", "closed(cancelled)"),
+        "closed" if task.resolution.as_deref() == Some("cancelled") => {
+            ("×", "closed(cancelled)")
+        }
+        "closed" if task.labels.iter().any(|label| label == aye::BYPASSED_LABEL) => {
+            ("⚠", "closed(bypassed)")
+        }
         "closed" => ("✓", "closed(done)"),
         "in_progress" => ("▶", "in_progress"),
         "blocked" => ("!", "blocked"),
@@ -71,9 +76,44 @@ pub fn status<'a>(state: &'a State, task: &'a Task) -> (&'static str, &'a str) {
 }
 /// Replace terminal controls and directional formatting while preserving Unicode text.
 pub fn sanitize(text: &str) -> String {
-    text.chars().map(|c| match c {
-        '\n' => '\n', '\t' => ' ',
-        c if c.is_control() || matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') => '�',
-        c => c,
-    }).collect()
+    text.chars()
+        .map(|c| match c {
+            '\n' => '\n',
+            '\t' => ' ',
+            c if c.is_control()
+                || matches!(
+                    c,
+                    '\u{061c}'
+                        | '\u{200e}'
+                        | '\u{200f}'
+                        | '\u{202a}'..='\u{202e}'
+                        | '\u{2066}'..='\u{2069}'
+                ) =>
+            {
+                '�'
+            }
+            c => c,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: &str = "2026-09-17T03:10:00.000Z";
+
+    #[test]
+    fn bypass_marker_has_distinct_closed_status() {
+        let mut state = State::empty();
+        let mut task = Task::new("implemented without device".into(), NOW);
+        task.status = "closed".into();
+        task.resolution = Some("done".into());
+        task.closed_at = Some(NOW.into());
+        task.labels.push(aye::BYPASSED_LABEL.into());
+        state.tasks.insert(task.id.clone(), task.clone());
+
+        assert_eq!(status(&state, &task), ("⚠", "closed(bypassed)"));
+        assert_eq!(state.effective(&task), "closed");
+    }
 }
