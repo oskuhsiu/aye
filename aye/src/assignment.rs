@@ -1,6 +1,7 @@
 //! A single transaction selects, owns, and describes one task.
 use crate::domain::{self, Action};
 use crate::error::{Error, Result};
+use crate::is_bypassed;
 use crate::model::{State, Task};
 use crate::projection;
 use crate::store::{Mutation, Store};
@@ -83,7 +84,7 @@ pub fn execute(
 fn brief(state: &State, task: &Task) -> Value {
     json!({"id":task.id,"title":task.title,"status":task.status,
         "resolution":task.resolution,"effective_state":state.effective(task),
-        "claim_owner":task.claim.as_ref().map(|c| &c.actor),
+        "bypassed":is_bypassed(task),"claim_owner":task.claim.as_ref().map(|c| &c.actor),
         "blocked_by":state.blocked_by(task),"manual_block":task.manual_block})
 }
 fn section(total: usize) -> Value {
@@ -175,8 +176,11 @@ fn packet(
         .filter(|t| filters.matches(t))
         .collect();
     let mut counts = json!({"total":matching.len(),"ready":0,"blocked":0,"in_progress":0,
-        "deferred":0,"closed_done":0,"closed_cancelled":0});
+        "deferred":0,"closed_done":0,"closed_cancelled":0,"bypassed":0});
     for task in &matching {
+        if is_bypassed(task) {
+            counts["bypassed"] = json!(counts["bypassed"].as_u64().unwrap() + 1);
+        }
         let key = match state.effective(task) {
             "closed" if task.resolution.as_deref() == Some("done") => "closed_done",
             "closed" => "closed_cancelled",
