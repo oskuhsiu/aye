@@ -16,6 +16,9 @@ no handler, runtime role or model-routing configuration is required.
 - **Starting, pausing, deferring or completing task work:** read
   [Common workflow](refs/common.md) first. It distinguishes ordinary pauses from
   explicit shelving and covers acquisition, atomic batches and acceptance.
+- **Waiving unavailable verification after implementation is complete:** read
+  [Explicit verification bypass](refs/bypass.md). Never authorize a bypass without
+  an explicit user instruction or a pre-existing project policy covering it.
 - **Constructing batch requests beyond the common examples:** read
   [Atomic batch reference](refs/batches.md) for operation fields and clearing rules.
 - **Starting, resuming or cleaning up a worktree:** read
