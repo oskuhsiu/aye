@@ -166,8 +166,10 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
                         )
                         .with_details(json!({"task_id":id,"blocked_by":blocked_by})));
                     }
-                    bypass_previous_manual_block =
-                        original.manual_block.as_ref().map(|block| block.reason.clone());
+                    bypass_previous_manual_block = original
+                        .manual_block
+                        .as_ref()
+                        .map(|block| block.reason.clone());
                     Some(normalized_bypass(reason, missing_checks)?)
                 }
                 _ => None,
@@ -414,13 +416,9 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
             .values()
             .filter(|dependent| dependent.depends_on.contains(&id))
             .filter(|dependent| {
-                state
-                    .tasks
-                    .get(&dependent.id)
-                    .is_some_and(|before| {
-                        state.effective(before) != "ready"
-                            && next.effective(dependent) == "ready"
-                    })
+                state.tasks.get(&dependent.id).is_some_and(|before| {
+                    state.effective(before) != "ready" && next.effective(dependent) == "ready"
+                })
             })
             .map(|dependent| &dependent.id)
             .collect();
@@ -520,16 +518,25 @@ mod tests {
         assert!(is_bypassed(&s.tasks[&id]));
         assert_eq!(s.tasks[&id].resolution.as_deref(), Some("done"));
         assert!(s.tasks[&id].manual_block.is_none());
-        assert!(s.tasks[&id].notes.last().unwrap().body.contains("Physical-device test"));
+        assert!(
+            s.tasks[&id]
+                .notes
+                .last()
+                .unwrap()
+                .body
+                .contains("Physical-device test")
+        );
         assert_eq!(s.effective(&s.tasks[&dependent_id]), "ready");
         assert_eq!(result["newly_ready"], json!([dependent_id]));
         assert_eq!(result["waived_manual_block"], "No device");
         run(&mut s, Action::Reopen(id.clone()));
         assert!(!is_bypassed(&s.tasks[&id]));
-        assert!(s.tasks[&id]
-            .notes
-            .iter()
-            .any(|note| note.body.contains("[aye:bypass]")));
+        assert!(
+            s.tasks[&id]
+                .notes
+                .iter()
+                .any(|note| note.body.contains("[aye:bypass]"))
+        );
     }
     #[test]
     fn bypass_rejects_dependencies_invalid_evidence_and_non_owner() {
