@@ -49,18 +49,31 @@ binary (`cargo install --path . --force`) and disposable repositories under
 9. Packaging/docs: installed binary works from nested worktree directories, help
    covers v1 commands, JSON failures are parseable, FORMAT permits tool-less reads.
    Full suite, cargo fmt/check/clippy and source diff review before completion.
+10. Explicit verification bypass: native `bypass` requires a nonempty reason and at
+    least one named missing check; accepts open, owned in-progress and deferred work;
+    preserves ownership and ordinary labels; clears an external/manual blocker;
+    records its reason plus every missing check in an attributed audit note; closes
+    dependency-satisfying and reports newly-ready dependents. It rejects unresolved
+    task prerequisites and non-owner mutation without a ref update. Native batch
+    `op: bypass` has identical domain behavior and all-or-nothing publication.
+    `show`, assignment briefs, status/report counts and `list --state bypassed`
+    expose the controlled presentation state. Create/update cannot forge or remove
+    its reserved marker; reopen clears the current marker while retaining history.
+    aye-view renders and filters `⚠ closed(bypassed)` distinctly from done/cancelled.
 
 ## Deliberate bootstrap cuts
 
 Remote sync, complete lifecycle/relations, rich filters and diagnostics are valid
 v1 requirements but unnecessary to bootstrap task ownership. They become actual
-tracked work after case 1–4 pass. No database, daemon, extra command families,
-query language, or configurable remote branch is introduced.
+tracked work after case 1–4 pass. No database, daemon, extra handler, query language,
+or configurable remote branch is introduced. Bypass is a lifecycle operation in
+the existing command/domain family, not a separate service or workflow engine.
 
 ## Architecture decision
 
 Use Git CLI plumbing with explicit cwd and piped object content, never checkout
-or use the source index. A pure task domain owns invariants. The Git store owns
+or use the source index. A pure task domain owns invariants, including bypass
+authorization evidence, ownership and dependency eligibility. The Git store owns
 object IO and expected-old ref updates. Projections are pure deterministic
 functions. Sync owns canonical three-way reconciliation and common conflict
 metadata. CLI owns parsing, actor lookup and JSON envelopes. All task writes
