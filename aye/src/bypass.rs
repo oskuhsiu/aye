@@ -373,9 +373,8 @@ fn build_request(
         labels.sort();
     }
 
-    let mut note = format!(
-        "[aye:bypass]\nReason: {reason}\nMissing checks that were not verified:"
-    );
+    let mut note =
+        format!("[aye:bypass]\nReason: {reason}\nMissing checks that were not verified:");
     for check in missing_checks {
         note.push_str("\n- ");
         note.push_str(check);
@@ -388,7 +387,10 @@ fn build_request(
     if status == "deferred" {
         operations.push(json!({"op":"resume","id":id}));
     }
-    if task.get("manual_block").is_some_and(|value| !value.is_null()) {
+    if task
+        .get("manual_block")
+        .is_some_and(|value| !value.is_null())
+    {
         operations.push(json!({"op":"unblock","id":id}));
     }
     operations.push(json!({"op":"update","id":id,"labels":labels}));
