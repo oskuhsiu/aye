@@ -61,9 +61,7 @@ pub fn current_ids(state: &State) -> Vec<String> {
 }
 pub fn status<'a>(state: &'a State, task: &'a Task) -> (&'static str, &'a str) {
     match state.effective(task) {
-        "closed" if task.resolution.as_deref() == Some("cancelled") => {
-            ("×", "closed(cancelled)")
-        }
+        "closed" if task.resolution.as_deref() == Some("cancelled") => ("×", "closed(cancelled)"),
         "closed" if task.labels.iter().any(|label| label == aye::BYPASSED_LABEL) => {
             ("⚠", "closed(bypassed)")
         }
