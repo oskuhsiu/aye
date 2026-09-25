@@ -1,8 +1,4 @@
-use crate::{
-    app::App,
-    query::Filters,
-    view,
-};
+use crate::{app::App, query::Filters, view};
 use aye::{
     BYPASSED_LABEL,
     model::{State, Task},
