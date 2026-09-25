@@ -1,10 +1,11 @@
 # aye skill for agents
 
 This package teaches an agent how to use the aye task manager. It covers daily
-task work, coordination across Git worktrees, explicit remote synchronization,
-conflict handling and Git/API inspection. Agents invoke aye directly; no handler
-agent, runtime role or model-routing setup is required. It targets aye 0.3.x with canonical
-format 1. This README is for people; the agent starts at `SKILL.md`.
+task work, coordination across Git worktrees, explicitly authorized verification
+bypasses, remote synchronization, conflict handling and Git/API inspection. Agents
+invoke aye directly; no handler agent, runtime role or model-routing setup is
+required. It targets aye 0.3.x with canonical format 1. This README is for people;
+the agent starts at `SKILL.md`.
 
 ## Package layout
 
@@ -14,11 +15,12 @@ skill/
 |-- README.md                    This human guide
 `-- refs/
     |-- common.md                Everyday workflow, claims, blockers, completion
+    |-- bypass.md                Human-authorized missing-verification bypasses
     |-- batches.md               Strict JSON request and operation fields
     |-- worktrees.md             Checkout notes, interruption/resume and cleanup
     |-- tasks-and-states.md      Metadata, queries, relationships and lifecycle
     |-- sync-and-conflicts.md    Remote synchronization and conflict resolution
-    |-- diagnostics.md          Errors, stale views and abandoned claims
+    |-- diagnostics.md           Errors, stale views and abandoned claims
     `-- git-and-api.md           Storage inspection, API reads and backups
 ```
 
@@ -54,6 +56,7 @@ Examples:
 - “Use aye to find the next ready task in the login work and complete it.”
 - “Create aye tasks for this plan, with success and failure acceptance cases.”
 - “Record the prerequisite you discovered and block the original task on it.”
+- “This implementation is complete, but we lack the target device. Bypass the task and record the physical-device and reconnect checks as missing.”
 - “Synchronize aye state and explain any conflicts before choosing a resolution.”
 
 Applications with explicit skill invocation can select the skill named `aye`.
@@ -74,10 +77,18 @@ claim (note only if already open). Unblocked work stays ready for the next sessi
 without a separate resume or confirmation. Explicit shelving pending confirmation
 uses defer and stays out of ready until authorized resumption; real blockers remain.
 Lost output requires inspection before retrying, since replay is not exactly-once.
-Source changes, task completion and remote task publication are separate results.
-The agent should record actual verification evidence before closing work as done.
-Local linked worktrees share claims immediately; independent clones need sync
-and can conflict. A normal source push does not publish tasks.
+Source changes, task completion, accepted verification risk and remote task
+publication are separate results.
+
+When you explicitly instruct the agent to bypass a completed implementation, that
+instruction is sufficient authorization to run the native `aye bypass` command;
+the skill tells the agent not to ask for duplicate confirmation. The agent must
+record the reason and every named missing check, must not claim those checks passed,
+and must not infer bypass permission merely because a device or test environment
+is unavailable. Unresolved task prerequisites still cannot be bypassed. Several
+already-authorized bypasses may be grouped with native `op: "bypass"` batch
+operations. Current bypasses are inspectable through `list --state bypassed` and
+`computed.bypassed`.
 
 For source work, the agent records the actual worktree root, branch and machine
 in task notes before editing. Those notes retain unfinished-work context across
@@ -93,5 +104,6 @@ GitHub access requires Git or Git Database API tools; browser-only task reading
 is outside this version's supported workflow.
 
 The skill does not grant permission to publish, override another agent's claim,
-or rewrite repository history. Existing task authorization remains applicable;
-the guide calls for a decision only when the intended action needs one.
+authorize bypass on its own, or rewrite repository history. Existing task
+authorization remains applicable; the guide calls for a decision only when the
+intended action needs one.
