@@ -1,3 +1,3 @@
 fn main() {
-    aye::run();
+    aye::run_cli();
 }
