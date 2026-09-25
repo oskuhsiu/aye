@@ -74,6 +74,24 @@ Timestamp example: `2026-09-17T03:10:00.000Z`. Actors, note bodies, and manual
 block reasons are nonempty. Notes are appended; their ordering and acceptance
 ordering are significant.
 
+### Compatible bypass marker
+
+Bypass is intentionally represented without a new status or resolution, so task
+format 1 readers preserve dependency behavior. A currently bypassed task has all
+of the following:
+
+- canonical `status: "closed"` and `resolution: "done"`;
+- reserved label `aye:bypassed`;
+- an attributed audit note beginning `[aye:bypass]` that names the authorization
+  reason and each check that remains unverified.
+
+Current aye reports this as `computed.bypassed: true`; aye-view presents
+`closed(bypassed)`. The marker means missing verification was explicitly accepted,
+not that it passed. `aye bypass` is the writer for this state. Create/update cannot
+add or remove the reserved marker; ordinary close and reopen clear the current
+marker, while appended audit notes remain historical evidence. Older compatible
+readers see an ordinary closed(done) task plus label and note.
+
 ## Status, readiness, and relations
 
 A task is ready exactly when its canonical status is `open`, its manual blocker
@@ -83,14 +101,21 @@ are their canonical statuses: `in_progress`, `deferred`, `closed`. Ready and
 blocked are computed values, never canonical statuses.
 
 A prerequisite cancelled with resolution `cancelled` **does not satisfy** a
-dependency. `blocked_by` is the sorted list of unresolved prerequisite IDs; a
-manual blocker is separate and clearing one kind never clears the other kind.
+dependency. A bypassed prerequisite does satisfy it because its canonical result is
+closed(done), while current readers retain the accepted-risk distinction through
+the reserved marker and audit note. `blocked_by` is the sorted list of unresolved
+prerequisite IDs; a manual blocker is separate and clearing one kind never clears
+the other kind.
+
 Only an unblocked open task can be claimed. Exactly in-progress tasks have a
-claim; the claim owner is the task writer until release, defer, or closure.
+claim; the claim owner is the task writer until release, defer, bypass or closure.
 In-progress tasks cannot retain unresolved blockers. Closing done requires
 unblocked open/in-progress state; cancellation can abandon blocked/deferred work.
-Reopening clears resolution and closed time, and cannot invalidate an active
-dependent. Forced release requires an audit reason.
+An explicitly authorized bypass accepts open, owned in-progress or deferred work,
+refuses unresolved task dependencies, clears an external/manual blocker and claim,
+and closes done with the compatibility marker. Reopening clears resolution,
+closed time and the current marker, and cannot invalidate an active dependent.
+Forced release requires an audit reason.
 
 Relations reference existing tasks, never self. Dependencies and the parent
 hierarchy must each be acyclic. Parent organizes work; it does not imply dependency,
@@ -105,7 +130,8 @@ priority, then creation timestamp ascending, then full ID ascending.
 `views/active.jsonl` contains every non-closed task with effective state, claim,
 manual blocker and unresolved dependency IDs, in the same stable order.
 `manifest.json` records `projection_version` (1), `tasks_tree_oid`, and counts for
-total, ready, blocked, in_progress, deferred, closed_done, closed_cancelled.
+total, ready, blocked, in_progress, deferred, closed_done, closed_cancelled, and
+bypassed. Bypassed is a subset of closed_done, not an additional canonical state.
 The OID is the actual Git `tasks/` subtree OID, excluding derived files.
 
 Compare the manifest OID to
@@ -116,17 +142,20 @@ CLI warns `VIEW_STALE`, computes accurate results in memory, and does not commit
 on reads. `aye rebuild` repairs derived files without changing canonical bytes;
 repeating it with identical output creates no commit.
 
-`REPORT.md` includes summary, in-progress, ready, blocked, deferred, last 20 closed
-(closed time descending, ID ascending), and last 20 discovered (creation time
-descending, ID ascending). No wall-clock metadata changes projection bytes.
+`REPORT.md` includes summary, in-progress, ready, blocked, deferred, last 20
+bypassed, last 20 closed (closed time descending, ID ascending), and last 20
+discovered (creation time descending, ID ascending). No wall-clock metadata
+changes projection bytes.
 
 ## External write limitations
 
 Use `aye` for task writes: external Git/API editing does not automatically enforce
-atomic claims, ownership, graph invariants or concurrency safety. A displayed ready
-task may already have been claimed; use `aye claim`. External editors must preserve
-the complete schema and graph and refresh views through the CLI. Derived files are
-never canonical input, and editing a view does not edit a task.
+atomic claims, ownership, graph invariants, bypass authorization or concurrency
+safety. A displayed ready task may already have been claimed; use `aye claim`.
+Do not forge or remove the reserved bypass marker through external editing. External
+editors must preserve the complete schema and graph and refresh views through the
+CLI. Derived files are never canonical input, and editing a view does not edit a
+task.
 
 Sync conflicts freeze writes across linked worktrees until resolved or aborted;
 reads remain available. Pending metadata identifies the remote and `remote_ref`;
