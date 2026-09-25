@@ -1,3 +1,4 @@
+use crate::bypass::{BYPASSED_LABEL, audit_note, is_bypassed};
 use crate::error::{Error, Result};
 use crate::model::{Claim, ManualBlock, Note, State, Task};
 use serde_json::{Value, json};
@@ -20,6 +21,11 @@ pub enum Action {
         id: String,
         cancelled: bool,
         note: Option<String>,
+    },
+    Bypass {
+        id: String,
+        reason: String,
+        missing_checks: Vec<String>,
     },
     Note {
         id: String,
@@ -50,6 +56,23 @@ pub enum Action {
 fn transition(message: impl Into<String>) -> Error {
     Error::new("INVALID_STATE_TRANSITION", message)
 }
+fn normalized_bypass(reason: &str, missing_checks: &[String]) -> Result<(String, Vec<String>)> {
+    let reason = reason.trim();
+    if reason.is_empty() {
+        return Err(Error::usage("Bypass reason cannot be empty"));
+    }
+    if missing_checks.is_empty() {
+        return Err(Error::usage("Bypass requires at least one missing check"));
+    }
+    let missing_checks: Vec<_> = missing_checks
+        .iter()
+        .map(|check| check.trim().to_string())
+        .collect();
+    if missing_checks.iter().any(String::is_empty) {
+        return Err(Error::usage("Bypass missing checks cannot be empty"));
+    }
+    Ok((reason.to_string(), missing_checks))
+}
 pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str) -> Result<Value> {
     let actor = actor.filter(|a| !a.trim().is_empty()).ok_or_else(|| {
         Error::new(
@@ -60,6 +83,7 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
     state.validate()?;
     let mut next = state.clone();
     let mut released_claim = None;
+    let mut bypass_previous_manual_block = None;
     let id = match action {
         Action::Create(task) => {
             if next.tasks.contains_key(&task.id) {
@@ -71,6 +95,11 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
                 || task.resolution.is_some()
             {
                 return Err(Error::usage("New tasks must be open"));
+            }
+            if task.labels.iter().any(|label| label == BYPASSED_LABEL) {
+                return Err(Error::usage(
+                    "aye:bypassed is reserved; use the bypass operation",
+                ));
             }
             let mut task = task.as_ref().clone();
             task.parent = task
@@ -96,6 +125,7 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
         }
         Action::Claim(input)
         | Action::Close { id: input, .. }
+        | Action::Bypass { id: input, .. }
         | Action::Note { id: input, .. }
         | Action::Update { id: input, .. }
         | Action::Block { id: input, .. }
@@ -118,6 +148,30 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
             }
             let ready = next.effective(original) == "ready";
             let unblocked = original.manual_block.is_none() && next.blocked_by(original).is_empty();
+            let was_bypassed = is_bypassed(original);
+            let bypass_input = match action {
+                Action::Bypass {
+                    reason,
+                    missing_checks,
+                    ..
+                } => {
+                    if original.status == "closed" {
+                        return Err(transition("A closed task cannot be bypassed"));
+                    }
+                    let blocked_by = next.blocked_by(original);
+                    if !blocked_by.is_empty() {
+                        return Err(Error::new(
+                            "BYPASS_UNRESOLVED_DEPENDENCIES",
+                            "Complete or explicitly restructure unresolved task dependencies before bypassing",
+                        )
+                        .with_details(json!({"task_id":id,"blocked_by":blocked_by})));
+                    }
+                    bypass_previous_manual_block =
+                        original.manual_block.as_ref().map(|block| block.reason.clone());
+                    Some(normalized_bypass(reason, missing_checks)?)
+                }
+                _ => None,
+            };
             let by = match action {
                 Action::Block { by, .. } | Action::Unblock { by, .. } => by
                     .as_deref()
@@ -196,6 +250,7 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
                     {
                         return Err(transition("Task cannot close with this resolution"));
                     }
+                    task.labels.retain(|label| label != BYPASSED_LABEL);
                     task.status = "closed".into();
                     task.resolution = Some(if *cancelled { "cancelled" } else { "done" }.into());
                     task.closed_at = Some(now.into());
@@ -203,6 +258,25 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
                     if let Some(body) = note {
                         append_note(task, actor, now, body)?;
                     }
+                }
+                Action::Bypass { .. } => {
+                    let (reason, missing_checks) = bypass_input.expect("validated bypass input");
+                    task.status = "closed".into();
+                    task.resolution = Some("done".into());
+                    task.closed_at = Some(now.into());
+                    task.claim = None;
+                    task.manual_block = None;
+                    if !task.labels.iter().any(|label| label == BYPASSED_LABEL) {
+                        task.labels.push(BYPASSED_LABEL.into());
+                    }
+                    task.labels.sort();
+                    task.labels.dedup();
+                    let note = audit_note(
+                        &reason,
+                        &missing_checks,
+                        bypass_previous_manual_block.as_deref(),
+                    );
+                    append_note(task, actor, now, &note)?;
                 }
                 Action::Note { body, .. } => append_note(task, actor, now, body)?,
                 Action::Update { patch, .. } => {
@@ -222,8 +296,21 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
                         task.acceptance = v.clone();
                     }
                     if let Some(v) = &patch.labels {
-                        task.labels = v.clone();
+                        if !was_bypassed && v.iter().any(|label| label == BYPASSED_LABEL) {
+                            return Err(Error::usage(
+                                "aye:bypassed is reserved; use the bypass operation",
+                            ));
+                        }
+                        task.labels = v
+                            .iter()
+                            .filter(|label| label.as_str() != BYPASSED_LABEL)
+                            .cloned()
+                            .collect();
+                        if was_bypassed {
+                            task.labels.push(BYPASSED_LABEL.into());
+                        }
                         task.labels.sort();
+                        task.labels.dedup();
                     }
                     if let Some(v) = parent {
                         task.parent = v;
@@ -302,6 +389,7 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
                     task.resolution = None;
                     task.closed_at = None;
                     task.claim = None;
+                    task.labels.retain(|label| label != BYPASSED_LABEL);
                 }
                 Action::Create(_) => unreachable!(),
             }
@@ -316,9 +404,28 @@ pub fn apply(state: &mut State, action: &Action, actor: Option<&str>, now: &str)
         _ => Error::usage(e.message),
     })?;
     let task = &next.tasks[&id];
-    let mut output = json!({"task": task, "computed": {"effective_state": next.effective(task), "blocked_by": next.blocked_by(task)}});
+    let mut output = json!({"task": task, "computed": {"effective_state": next.effective(task), "blocked_by": next.blocked_by(task), "bypassed": is_bypassed(task)}});
     if matches!(action, Action::Block { .. }) {
         output["released_claim"] = json!(released_claim);
+    }
+    if matches!(action, Action::Bypass { .. }) {
+        let newly_ready: Vec<_> = next
+            .tasks
+            .values()
+            .filter(|dependent| dependent.depends_on.contains(&id))
+            .filter(|dependent| {
+                state
+                    .tasks
+                    .get(&dependent.id)
+                    .is_some_and(|before| {
+                        state.effective(before) != "ready"
+                            && next.effective(dependent) == "ready"
+                    })
+            })
+            .map(|dependent| &dependent.id)
+            .collect();
+        output["newly_ready"] = json!(newly_ready);
+        output["waived_manual_block"] = json!(bypass_previous_manual_block);
     }
     *state = next;
     Ok(output)
@@ -386,6 +493,149 @@ mod tests {
         assert!(s.tasks[&id].claim.is_none());
         assert_eq!(s.tasks[&id].notes.len(), 2);
         s.validate().unwrap();
+    }
+    #[test]
+    fn bypass_records_risk_and_unlocks_dependents() {
+        let (mut s, id) = fixture();
+        let mut dependent = Task::new("dependent".into(), NOW);
+        dependent.depends_on.push(id.clone());
+        let dependent_id = dependent.id.clone();
+        run(&mut s, Action::Create(Box::new(dependent)));
+        run(
+            &mut s,
+            Action::Block {
+                id: id.clone(),
+                by: None,
+                reason: Some("No device".into()),
+            },
+        );
+        let result = run(
+            &mut s,
+            Action::Bypass {
+                id: id.clone(),
+                reason: "Implementation and review complete".into(),
+                missing_checks: vec!["Physical-device test".into()],
+            },
+        );
+        assert!(is_bypassed(&s.tasks[&id]));
+        assert_eq!(s.tasks[&id].resolution.as_deref(), Some("done"));
+        assert!(s.tasks[&id].manual_block.is_none());
+        assert!(s.tasks[&id].notes.last().unwrap().body.contains("Physical-device test"));
+        assert_eq!(s.effective(&s.tasks[&dependent_id]), "ready");
+        assert_eq!(result["newly_ready"], json!([dependent_id]));
+        assert_eq!(result["waived_manual_block"], "No device");
+        run(&mut s, Action::Reopen(id.clone()));
+        assert!(!is_bypassed(&s.tasks[&id]));
+        assert!(s.tasks[&id]
+            .notes
+            .iter()
+            .any(|note| note.body.contains("[aye:bypass]")));
+    }
+    #[test]
+    fn bypass_rejects_dependencies_invalid_evidence_and_non_owner() {
+        let (mut s, id) = fixture();
+        let blocker = Task::new("blocker".into(), NOW);
+        let blocker_id = blocker.id.clone();
+        run(&mut s, Action::Create(Box::new(blocker)));
+        run(
+            &mut s,
+            Action::Block {
+                id: id.clone(),
+                by: Some(blocker_id),
+                reason: None,
+            },
+        );
+        let before = s.tasks.clone();
+        let error = apply(
+            &mut s,
+            &Action::Bypass {
+                id: id.clone(),
+                reason: "No device".into(),
+                missing_checks: vec!["Device test".into()],
+            },
+            Some("a"),
+            NOW,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "BYPASS_UNRESOLVED_DEPENDENCIES");
+        assert_eq!(s.tasks, before);
+
+        let (mut s, id) = fixture();
+        unchanged(
+            &mut s,
+            Action::Bypass {
+                id: id.clone(),
+                reason: " ".into(),
+                missing_checks: vec!["Device test".into()],
+            },
+        );
+        unchanged(
+            &mut s,
+            Action::Bypass {
+                id: id.clone(),
+                reason: "No device".into(),
+                missing_checks: vec![],
+            },
+        );
+        run(&mut s, Action::Claim(id.clone()));
+        assert_eq!(
+            apply(
+                &mut s,
+                &Action::Bypass {
+                    id,
+                    reason: "No device".into(),
+                    missing_checks: vec!["Device test".into()],
+                },
+                Some("b"),
+                NOW,
+            )
+            .unwrap_err()
+            .code,
+            "NOT_CLAIM_OWNER"
+        );
+    }
+    #[test]
+    fn reserved_bypass_label_is_controlled_by_lifecycle_operations() {
+        let (mut s, id) = fixture();
+        unchanged(
+            &mut s,
+            Action::Update {
+                id: id.clone(),
+                patch: Update {
+                    labels: Some(vec![BYPASSED_LABEL.into()]),
+                    ..Default::default()
+                },
+            },
+        );
+        run(
+            &mut s,
+            Action::Bypass {
+                id: id.clone(),
+                reason: "No device".into(),
+                missing_checks: vec!["Device test".into()],
+            },
+        );
+        run(
+            &mut s,
+            Action::Update {
+                id: id.clone(),
+                patch: Update {
+                    labels: Some(vec!["kept".into()]),
+                    ..Default::default()
+                },
+            },
+        );
+        assert_eq!(s.tasks[&id].labels, vec![BYPASSED_LABEL, "kept"]);
+        run(&mut s, Action::Reopen(id.clone()));
+        run(
+            &mut s,
+            Action::Close {
+                id: id.clone(),
+                cancelled: false,
+                note: None,
+            },
+        );
+        assert!(!is_bypassed(&s.tasks[&id]));
     }
     #[test]
     fn failed_mutations_and_claim_retry_preserve_winner() {
