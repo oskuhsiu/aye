@@ -1,7 +1,7 @@
 use crate::error::Result;
+use crate::is_bypassed;
 use crate::model::{State, Task};
 use crate::store::{self, Files, Snapshot};
-use crate::is_bypassed;
 use serde_json::{Value, json};
 
 fn ordered(state: &State) -> Vec<&Task> {
@@ -141,11 +141,7 @@ pub fn report(state: &State) -> String {
         .collect();
     closed.sort_by(|a, b| b.closed_at.cmp(&a.closed_at).then_with(|| a.id.cmp(&b.id)));
     closed.truncate(20);
-    let mut bypassed: Vec<_> = state
-        .tasks
-        .values()
-        .filter(|t| is_bypassed(t))
-        .collect();
+    let mut bypassed: Vec<_> = state.tasks.values().filter(|t| is_bypassed(t)).collect();
     bypassed.sort_by(|a, b| b.closed_at.cmp(&a.closed_at).then_with(|| a.id.cmp(&b.id)));
     bypassed.truncate(20);
     let mut discovered: Vec<_> = state
