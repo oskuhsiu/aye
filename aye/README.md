@@ -92,8 +92,8 @@ or append-only facts need no preliminary snapshot read just for this guard.
 The receipt supplies the committed OID, alias IDs, operation outcomes and final
 states of touched tasks, including changed facts and added notes. Supported
 operations are create, update, note, block, unblock, claim, ordinary release,
-defer, resume, close and reopen. Sync, forced release, configuration, conflict
-resolution and source/filesystem actions remain separate.
+defer, resume, close, bypass and reopen. Sync, forced release, configuration,
+conflict resolution and source/filesystem actions remain separate.
 
 For an ordinary pause, whatever the session reason, batch a note with `body`
 containing observed progress, remaining checks and checkout facts, followed by
@@ -107,39 +107,67 @@ operation's `by` reference in the same batch. Blocking releases an active claim;
 only `closed(done)` satisfies a dependency. Cancellation keeps dependents blocked.
 External waits use `block` with `reason`; `unblock` clears that manual blocker.
 
+When implementation is complete but named verification cannot currently run, an
+explicitly authorized bypass can release downstream work without claiming the
+missing checks passed:
+
+```sh
+aye --json bypass TASK_ID \
+  --reason "Target hardware unavailable" \
+  --missing "Physical-device smoke test" \
+  --missing "Bluetooth reconnect test"
+```
+
+The command is a native domain mutation. It preserves claim ownership, refuses
+unresolved task prerequisites, accepts open, owned in-progress or deferred work,
+clears an external/manual blocker, records an attributed audit note, adds the
+reserved `aye:bypassed` marker, and closes dependency-satisfying. Its reply includes
+`computed.bypassed`, `newly_ready` and `waived_manual_block`. Use
+`aye --json list --state bypassed` to inspect current bypasses. Reopen clears the
+current marker while retaining the audit note.
+
+An explicit user instruction is sufficient authorization for an agent to execute
+bypass without a duplicate confirmation. Agents must never infer authorization
+merely because a device, lab, account or test environment is unavailable. The
+same operation is available in batches as `op: "bypass"` with `reason` and a
+nonempty `missing` array. See [bypass guidance](skill/refs/bypass.md).
+
 Record actual acceptance, independent review, source integration and verified
 worktree-cleanup evidence before closing done. Batch the known evidence note and
-close only after those actions succeed; a commit alone is insufficient. Source
-publication and task sync are separate actions; `aye sync` fetches and pushes.
+close only after those actions succeed; a commit alone is insufficient. Bypassed
+work must instead name every accepted missing check and must not be reported as
+fully verified. Source publication and task sync are separate actions; `aye sync`
+fetches and pushes.
 
 If a reply is lost/truncated, inspect retained actor/task facts before retrying.
 The current-claim guard and local aliases are not historical replay keys: after
 release/close, another next-claim could allocate different work, and replayed
 creates/notes can duplicate data. Report uncertainty if success cannot be proved.
 See the [batch field reference](skill/refs/batches.md),
-[common workflow](skill/refs/common.md) and
-[diagnostics](skill/refs/diagnostics.md) for complete examples and recovery.
+[common workflow](skill/refs/common.md), [bypass guidance](skill/refs/bypass.md)
+and [diagnostics](skill/refs/diagnostics.md) for complete examples and recovery.
 
 ## Commands
 
 | Purpose | Commands |
 | --- | --- |
 | Setup and sync | `init [--offline]`, `sync`, `config actor [value]`, `config remote [name]` |
-| Discover work | `ready`, `list`, `show <id>`, `status`, `report` |
+| Discover work | `ready`, `list [--state bypassed]`, `show <id>`, `status`, `report` |
 | Task metadata | `create`, `update`, `note <id> <text>` or `note <id> --file <path>` |
 | Ownership | `claim --next [filters]`, `claim <id> [--packet]`, `release [--force --reason <text>]` |
 | Blocking | `block --by <id>` or `block --reason <text>`, `unblock [--by <id>]` |
-| Lifecycle | `close [--cancelled] [--note <text>]`, `reopen`, `defer`, `resume` |
-| Atomic task writes | `apply --file PATH` or `apply --file -` |
+| Lifecycle | `close [--cancelled] [--note <text>]`, `bypass --reason <text> --missing <check>`, `reopen`, `defer`, `resume` |
+| Atomic task writes | `apply --file PATH` or `apply --file -`, including `op: "bypass"` |
 | Integrity | `doctor`, `rebuild`, `resolve` |
 
 All commands support `--json`; inspect `error.code`. Exit codes are 0 success,
 1 unexpected internal failure, 2 invalid usage, and 3 operational/domain failure.
 `aye <command> --help` lists options. IDs may use a unique prefix of at least eight
 payload hex characters. Ready defaults to 20 results; `--all` removes this limit.
-List defaults to active tasks; `--state closed` or `--all` includes closed tasks.
-Metadata updates replace repeated acceptance/label arrays; `--clear-acceptance`,
-`--clear-labels`, and `--clear-parent` clear them explicitly.
+List defaults to active tasks; `--state closed`, `--state bypassed` or `--all`
+includes matching closed tasks. Metadata updates replace repeated acceptance/label
+arrays; `--clear-acceptance`, `--clear-labels`, and `--clear-parent` clear them
+explicitly. The reserved bypass marker cannot be forged through create/update.
 
 ## Storage and recovery
 
@@ -168,21 +196,21 @@ GitHub does not expose `<repository>/.git/` as an HTTP filesystem. API clients
 use Git database matching-refs with exact-name filtering, then commits, trees and
 blobs; see [the Git/API reading instructions](src/FORMAT.md#reading-through-git-or-api).
 Browser-only Agents are outside the supported scope. Valid external JSON edits can
-make views stale:
-reads warn and recompute without committing. `aye rebuild` repairs generated data
-without changing canonical bytes. `aye doctor` checks canonical integrity and view
-freshness, with warnings for large tasks, cancelled prerequisites, and closed
-parents with open children.
+make views stale: reads warn and recompute without committing. `aye rebuild`
+repairs generated data without changing canonical bytes. `aye doctor` checks
+canonical integrity and view freshness, with warnings for large tasks, cancelled
+prerequisites, and closed parents with open children.
 
-A normal source `git push` keeps its existing behavior. `aye sync` explicitly fetches
-and normally pushes only the fixed `refs/agent-tasks/state` custom ref. Remote selection is a
-configured task remote, then `origin`, then the sole Git remote, otherwise local-only.
-The host must permit access and normal pushes to that custom ref. GitHub branch
-pages/protection are not the custom-ref interface; repository permissions still
-apply. Private-repository API readers need Contents read permission; public reads can be anonymous. Custom refs are not
-a secret store. Backups must explicitly include custom refs and their objects.
-No legacy task branch is automatically adopted, created, or used as fallback.
-The tool never force-pushes or changes source push settings/hooks.
+A normal source `git push` keeps its existing behavior. `aye sync` explicitly
+fetches and normally pushes only the fixed `refs/agent-tasks/state` custom ref.
+Remote selection is a configured task remote, then `origin`, then the sole Git
+remote, otherwise local-only. The host must permit access and normal pushes to that
+custom ref. GitHub branch pages/protection are not the custom-ref interface;
+repository permissions still apply. Private-repository API readers need Contents
+read permission; public reads can be anonymous. Custom refs are not a secret store.
+Backups must explicitly include custom refs and their objects. No legacy task branch
+is automatically adopted, created, or used as fallback. The tool never force-pushes
+or changes source push settings/hooks.
 
 When upgrading from 0.1, upgrade all writers before retiring the legacy branch.
 Preserve and reconcile the old branch tip, verify the custom ref by explicit fetch
@@ -209,14 +237,18 @@ aye resolve --abort
 
 Choose a resolution for every listed task. The pending snapshots remain reachable
 through Git refs even across garbage collection. Remote project mismatch, invalid
-canonical data, and deletion of a previously observed custom task ref fail safely. Observations are
-scoped by remote plus ref. Pending resolutions record the target `remote_ref`;
-legacy or mismatched pending state cannot continue against the new target. Abort
-obsolete pending resolution before starting a fresh sync.
+canonical data, and deletion of a previously observed custom task ref fail safely.
+Observations are scoped by remote plus ref. Pending resolutions record the target
+`remote_ref`; legacy or mismatched pending state cannot continue against the new
+target. Abort obsolete pending resolution before starting a fresh sync.
 `MISSING_HISTORY` means the task histories lack an available merge base; obtain
 complete task history and retry. There is no distributed claim lock across clones.
 
 ## Development evidence
+
+The bypass change adds a native CLI/domain operation, atomic batch support,
+format-v1-compatible presentation metadata, agent authorization guidance and
+regression coverage across core, installed CLI behavior and aye-view.
 
 Release 0.3.1 includes clarified ordinary-pause versus explicit-deferral guidance
 and next-session acquisition regression coverage. Runtime task transitions and
@@ -224,13 +256,14 @@ canonical format remain unchanged.
 
 Release 0.3.0 adds direct assignment packets and atomic task batches to the
 existing task workflow; canonical project format and task schema remain version 1.
-Behavior cases and milestones
-are in [verification/CASES.md](verification/CASES.md); direct-operation results and
-measurement limits are in [verification/DIRECT_OPERATIONS_RESULTS.md](verification/DIRECT_OPERATIONS_RESULTS.md). A tested local bootstrap
-created the remaining development tasks in its own shared state; subsequent work
-used claims, notes, blocking, completion, and reopen where verification found bugs.
-`aye list --all` and `aye report` inspect that repository-local development record.
-It is published only if someone explicitly runs `aye sync` against a remote.
+Behavior cases and milestones are in [verification/CASES.md](verification/CASES.md);
+direct-operation results and measurement limits are in
+[verification/DIRECT_OPERATIONS_RESULTS.md](verification/DIRECT_OPERATIONS_RESULTS.md).
+A tested local bootstrap created the remaining development tasks in its own shared
+state; subsequent work used claims, notes, blocking, completion, and reopen where
+verification found bugs. `aye list --all` and `aye report` inspect that
+repository-local development record. It is published only if someone explicitly
+runs `aye sync` against a remote.
 
 `make benchmark` creates 10,000 tasks (1,000 active, 100 ready), verifies ready
 membership, and reports local ready/rebuild/update timings. Timings are evidence
