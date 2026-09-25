@@ -28,6 +28,31 @@ a linked worktree. Initialize task state with `aye init` when needed; see the
 aye-view
 ```
 
+## Explicit verification bypass
+
+When implementation, review and available checks are complete but a named external
+condition cannot be tested, an authorized user can release downstream work without
+claiming that the missing checks passed:
+
+```sh
+aye bypass TASK_ID \
+  --reason "Target hardware is unavailable" \
+  --missing "Physical-device smoke test" \
+  --missing "Bluetooth reconnect test"
+```
+
+The operation is atomic. It refuses unresolved task prerequisites, resumes deferred
+work when necessary, clears only an external/manual blocker, preserves existing
+labels, records the reason and missing checks in an attributed note, and adds the
+reserved `aye:bypassed` marker before closing the task as dependency-satisfying.
+Agents must not authorize this risk acceptance without explicit user approval or a
+pre-existing project policy covering the exact missing checks.
+
+The task format remains version 1: older aye versions see dependency-compatible
+`closed(done)` data plus the label and note. Current aye-view renders the marker as
+`⚠ closed(bypassed)`, so bypassed prerequisites stay visibly different from fully
+verified `✓ closed(done)` work.
+
 ## View tasks
 
 aye-view reads canonical local state from `refs/agent-tasks/state`. It observes
