@@ -28,6 +28,39 @@ a linked worktree. Initialize task state with `aye init` when needed; see the
 aye-view
 ```
 
+## Explicit verification bypass
+
+When implementation, review and available checks are complete but a named external
+condition cannot be tested, an authorized user can release downstream work without
+claiming that the missing checks passed:
+
+```sh
+aye --json bypass TASK_ID \
+  --reason "Target hardware is unavailable" \
+  --missing "Physical-device smoke test" \
+  --missing "Bluetooth reconnect test"
+```
+
+`bypass` is a native aye command and domain operation. It atomically refuses
+unresolved task prerequisites, accepts open, owned in-progress or deferred work,
+clears an external/manual blocker, preserves ordinary labels, records the reason
+and missing checks in an attributed note, adds the reserved `aye:bypassed` marker,
+and closes the task as dependency-satisfying. The JSON result identifies newly
+ready dependents and any waived manual blocker.
+
+An explicit user request to bypass is sufficient authorization for an agent to run
+the command; the agent must not ask for a duplicate confirmation. Agents must not
+infer authorization merely because hardware, a test environment or another
+condition is unavailable. Multiple authorized bypasses can be included in one
+`aye apply` request with `{"op":"bypass","reason":"...","missing":["..."]}`.
+
+The task format remains version 1: older aye versions see dependency-compatible
+`closed(done)` data plus the label and audit note. Current aye exposes
+`computed.bypassed`, `list --state bypassed` and bypass counts. Current aye-view
+renders and filters the marker as `⚠ closed(bypassed)`, keeping it visibly distinct
+from fully verified `✓ closed(done)` work. Reopening clears the current bypass
+marker while preserving its audit note.
+
 ## View tasks
 
 aye-view reads canonical local state from `refs/agent-tasks/state`. It observes
@@ -48,7 +81,7 @@ join. Status symbols remain meaningful without color; `NO_COLOR` disables colors
 | `-`, `+` / `=`, `0` | Graph Main: Compact, Standard, reset to Standard |
 | Tab | Graph/List; in History, switch pane |
 | Enter, Esc | Open details / go back |
-| `/`, `f` | Search title/ID/labels, or filter state/priority/type/label/claimant |
+| `/`, `f` | Search title/ID/labels, or filter state/priority/type/label/claimant, including `closed(bypassed)` |
 | `F`, `g` | Focus selected dependency context / return to full Current Graph |
 | `c`, `]` | Toggle recent closed (24 hours) / select a task in that secondary region |
 | `h` | Closed History, newest first, exposed in batches |
@@ -99,4 +132,5 @@ and coverage limits. Shared aye source changes also require `make -C aye test`.
 
 Package `target/` outputs and `test/` fixtures are ignored and can be deleted;
 builds/tests recreate them. Keep Cargo.lock files and durable verification
-sources. Source commits and task synchronization remain separate operations.
+sources. Source commits, accepted verification risk and task synchronization
+remain separate results.

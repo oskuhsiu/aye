@@ -115,6 +115,7 @@ fn prepare(value: &Value, aliases: &mut BTreeMap<String, String>, now: &str) -> 
         "unblock" => &["op", "id", "by"],
         "close" => &["op", "id", "cancelled", "note"],
         "cancel" => &["op", "id", "note"],
+        "bypass" => &["op", "id", "reason", "missing"],
         "claim" | "release" | "defer" | "resume" | "reopen" => &["op", "id"],
         _ => return Err(Error::usage(format!("Unknown batch operation: {op}"))),
     };
@@ -211,6 +212,12 @@ fn prepare(value: &Value, aliases: &mut BTreeMap<String, String>, now: &str) -> 
                 },
             note: string(map, "note")?,
         },
+        "bypass" => Action::Bypass {
+            id: id.clone(),
+            reason: required(map, "reason")?,
+            missing_checks: strings(map, "missing")?
+                .ok_or_else(|| Error::usage("Missing missing"))?,
+        },
         "claim" => Action::Claim(id.clone()),
         "release" => Action::Release {
             id: id.clone(),
@@ -279,9 +286,16 @@ pub fn execute(store: &Store, path: &str, actor: Option<&str>, now: &str) -> Res
         })
         .collect::<Result<Vec<_>>>()?;
     let receipt = store.transact(|snapshot, state| {
-        if request.expected_state_oid.as_ref().is_some_and(|oid| oid != &snapshot.oid) {
-            return Err(Error::new("STALE_STATE", "Batch expected_state_oid does not match current state")
-                .with_details(json!({"expected_state_oid": request.expected_state_oid, "observed_state_oid": snapshot.oid})));
+        if request
+            .expected_state_oid
+            .as_ref()
+            .is_some_and(|oid| oid != &snapshot.oid)
+        {
+            return Err(Error::new(
+                "STALE_STATE",
+                "Batch expected_state_oid does not match current state",
+            )
+            .with_details(json!({"expected_state_oid": request.expected_state_oid, "observed_state_oid": snapshot.oid})));
         }
         let before = state.clone();
         let mut outcomes = Vec::new();
@@ -291,24 +305,44 @@ pub fn execute(store: &Store, path: &str, actor: Option<&str>, now: &str) -> Res
                 .map_err(|e| contextual(e, index, operation.alias.as_deref()))?;
             let mut outcome = json!({"op_index": index, "op": operation.op, "id": operation.id,
                 "alias": operation.alias, "outcome": "applied"});
-            if let Some(released) = result.get("released_claim") { outcome["released_claim"] = released.clone(); }
+            if let Some(released) = result.get("released_claim") {
+                outcome["released_claim"] = released.clone();
+            }
+            if let Some(newly_ready) = result.get("newly_ready") {
+                outcome["newly_ready"] = newly_ready.clone();
+            }
+            if let Some(block) = result.get("waived_manual_block") {
+                outcome["waived_manual_block"] = block.clone();
+            }
             outcomes.push(outcome);
             touched.insert(operation.id.clone());
         }
-        let tasks = touched.iter().map(|id| {
-            let task = &state.tasks[id];
-            let original = before.tasks.get(id);
-            let old = original.map(|t| serde_json::to_value(t).expect("Task serializes"));
-            let mut final_task = serde_json::to_value(task).expect("Task serializes");
-            final_task.as_object_mut().unwrap().remove("notes");
-            let changes: Map<String, Value> = final_task.as_object().unwrap().iter()
-                .filter(|(key, value)| old.as_ref().and_then(|v| v.get(*key)) != Some(*value))
-                .map(|(key, value)| (key.clone(), value.clone())).collect();
-            let prior_notes = original.map_or(0, |t| t.notes.len());
-            json!({"task": final_task, "computed": {"effective_state": state.effective(task),
-                "blocked_by": state.blocked_by(task)}, "changes": changes, "added_notes": &task.notes[prior_notes..]})
-        }).collect::<Vec<_>>();
-        Ok(Mutation::Write(json!({"version": 1, "aliases": aliases, "operations": outcomes, "tasks": tasks})))
+        let tasks = touched
+            .iter()
+            .map(|id| {
+                let task = &state.tasks[id];
+                let original = before.tasks.get(id);
+                let old = original.map(|t| serde_json::to_value(t).expect("Task serializes"));
+                let mut final_task = serde_json::to_value(task).expect("Task serializes");
+                final_task.as_object_mut().unwrap().remove("notes");
+                let changes: Map<String, Value> = final_task
+                    .as_object()
+                    .unwrap()
+                    .iter()
+                    .filter(|(key, value)| {
+                        old.as_ref().and_then(|v| v.get(*key)) != Some(*value)
+                    })
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect();
+                let prior_notes = original.map_or(0, |t| t.notes.len());
+                json!({"task": final_task, "computed": {"effective_state": state.effective(task),
+                    "blocked_by": state.blocked_by(task), "bypassed": crate::is_bypassed(task)},
+                    "changes": changes, "added_notes": &task.notes[prior_notes..]})
+            })
+            .collect::<Vec<_>>();
+        Ok(Mutation::Write(
+            json!({"version": 1, "aliases": aliases, "operations": outcomes, "tasks": tasks}),
+        ))
     })?;
     let mut result = receipt.value;
     result["state_oid"] = json!(receipt.oid);

@@ -38,10 +38,13 @@ or syncs. See the CLI guide before choosing initialization for an existing proje
 
 Current Graph contains every non-closed task and its prerequisite ancestors,
 including closed ancestors. Isolated tasks and disconnected components remain
-visible. `B -> A` means A depends on B; only `closed(done)` satisfies a dependency.
-A cancelled prerequisite still blocks its dependents. Parent and discovery
-relationships appear in details, not as graph edges. A manual blocker adds no
-synthetic node. `╳` marks a crossing without a join.
+visible. `B -> A` means A depends on B; only canonical `closed(done)` satisfies a
+dependency. An explicitly authorized bypass is represented compatibly as
+closed(done) plus an audit marker, so it satisfies dependents while remaining
+visibly distinct from fully verified work. A cancelled prerequisite still blocks
+its dependents. Parent and discovery relationships appear in details, not as graph
+edges. A manual blocker adds no synthetic node. `╳` marks a crossing without a
+join.
 
 Dependency paths use a repeating cyan, magenta, yellow, blue, green, red palette.
 Within each visible layer, full source IDs are sorted to assign colors; branches
@@ -55,14 +58,16 @@ colors retain their status meaning. Scope changes may reassign path colors.
 | `▶` | in_progress | Claimed by the actor shown in details |
 | `!` | blocked | Open with an unmet prerequisite or manual blocker |
 | `⏸` | deferred | Explicitly postponed; aye must resume it before it can be claimed |
-| `✓` | closed(done) | Completed; satisfies dependents' prerequisites |
+| `✓` | closed(done) | Completed and verified as required; satisfies dependents |
+| `⚠` | closed(bypassed) | Missing named verification was explicitly accepted; satisfies dependents but is not fully verified |
 | `×` | closed(cancelled) | Cancelled; does not satisfy dependents' prerequisites |
 
 Symbols and text remain meaningful without color. Nodes may abbreviate titles;
-Enter opens the full details, including IDs, acceptance, blockers, relationships
-and notes. Wide terminals show both panes; narrow terminals show the active pane.
-Up/Down or j/k and PgUp/PgDown scroll details, including wrapped Unicode text.
-Esc returns to the main pane.
+Enter opens the full details, including IDs, acceptance, blockers, relationships,
+labels and audit notes. A bypass note records the authorization reason and missing
+checks; the viewer does not claim those checks passed. Wide terminals show both
+panes; narrow terminals show the active pane. Up/Down or j/k and PgUp/PgDown scroll
+details, including wrapped Unicode text. Esc returns to the main pane.
 
 ## Keys by mode
 
@@ -81,7 +86,7 @@ shortcuts. Ctrl-c quits from every mode; `q` quits outside those two dialogs.
 | Right / `l` in List or History | Open details |
 | Esc, Left, Backspace or Ctrl-h in details | Return to the main pane |
 | `/` | Search all canonical tasks, including hidden and closed tasks |
-| `f` | Open the five-filter dialog |
+| `f` | Open the five-filter dialog; state includes `closed(bypassed)` |
 | `F` | Focus the selected task's prerequisite ancestors and dependent descendants |
 | `g` | Return to full Current Graph, clearing Focus and filters |
 | Esc in focused main pane | Return to full Current Graph, clearing Focus and filters |
@@ -95,21 +100,21 @@ shortcuts. Ctrl-c quits from every mode; `q` quits outside those two dialogs.
 | Dialog or pane | Keys |
 | --- | --- |
 | Search | Type title/ID/label text (case-insensitive); Backspace deletes; Up/Down select a result; Enter reveals it; Esc cancels. Letters such as `j`, `q` and `f` enter text. |
-| Filter | Up/Down or Tab/Shift-Tab choose state, priority, type, label or claimant; Left/Right or Space cycle values; `c` clears the draft; Enter applies; Esc cancels. |
+| Filter | Up/Down or Tab/Shift-Tab choose state, priority, type, label or claimant; Left/Right or Space cycle values; `c` clears the draft; Enter applies; Esc cancels. `closed(bypassed)` selects only current bypasses. |
 | Details | Up/Down or `k`/`j` scroll one line; PgUp/PgDown scroll a page; Esc returns to main. |
 | History main pane | Up/Down or `k`/`j` move rows; PgUp/PgDown move a page and expose more rows near the end; Enter opens details; Tab switches panes; Esc returns to the previous view. |
 | Help | Up/Down or `k`/`j` scroll; PgUp/PgDown page; Esc or `?` closes Help. |
 
 Filters intersect. To recover from an empty filter result, press `f`, `c`, Enter,
-or use `g` for full Current Graph. `g` retains the Recent toggle. A chosen Search result can temporarily bypass
-filters; moving to another task or applying filters ends that reveal. No-match
-Search stays open until you edit the query or cancel.
+or use `g` for full Current Graph. `g` retains the Recent toggle. A chosen Search
+result can temporarily bypass filters; moving to another task or applying filters
+ends that reveal. No-match Search stays open until you edit the query or cancel.
 
 Focus captures a fixed root even as selection moves. Entering it clears filters;
 later filters narrow its scope. It excludes unrelated siblings and descendants'
 other prerequisites. Searching for a result outside Focus exits Focus. Recent
 is hidden during Focus. History temporarily overrides Focus, retains filters,
-and includes both done and cancelled tasks, newest closure first. It exposes
+and includes done, bypassed and cancelled tasks, newest closure first. It exposes
 about 50 rows initially, then adds batches as you move; only viewport rows are
 rendered. If History appears empty, clear any active filters.
 
@@ -174,7 +179,8 @@ five-session integration suite. They verify palette identities and neutral
 crossings, not contrast across every terminal theme. The subsequent
 [zoom acceptance checks](verification/GRAPH_ZOOM.md) passed 51 Rust tests, a
 36-frame installed zoom session, four colored/monochrome frames and the complete
-five-session integration suite. In a 50x18 chain view, Compact showed two complete
+five-session integration suite. Bypass adds focused coverage for status rendering,
+state filtering and details. In a 50x18 chain view, Compact showed two complete
 nodes versus one in Standard. The latest scale run started in 0.2610s and reloaded
 in 0.5918s, subject to the same single-run limits.
 

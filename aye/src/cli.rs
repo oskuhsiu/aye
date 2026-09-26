@@ -80,7 +80,7 @@ enum Commands {
     List {
         #[arg(long)]
         all: bool,
-        #[arg(long, value_parser = ["open", "ready", "blocked", "in_progress", "deferred", "closed"])]
+        #[arg(long, value_parser = ["open", "ready", "blocked", "in_progress", "deferred", "closed", "bypassed"])]
         state: Option<String>,
         #[arg(long)]
         claimant: Option<String>,
@@ -154,6 +154,14 @@ enum Commands {
         cancelled: bool,
         #[arg(long)]
         note: Option<String>,
+    },
+    /// Accept named unavailable checks and release downstream dependencies.
+    Bypass {
+        id: String,
+        #[arg(long)]
+        reason: String,
+        #[arg(long = "missing", required = true)]
+        missing_checks: Vec<String>,
     },
     Reopen {
         id: String,
@@ -279,9 +287,13 @@ fn execute(cli: &Cli) -> Result<Reply> {
                 .values()
                 .filter(|t| {
                     (*all || state.is_some() || t.status != "closed")
-                        && state
-                            .as_ref()
-                            .is_none_or(|v| v == &t.status || v == snapshot.state.effective(t))
+                        && state.as_ref().is_none_or(|v| {
+                            if v == "bypassed" {
+                                crate::is_bypassed(t)
+                            } else {
+                                v == &t.status || v == snapshot.state.effective(t)
+                            }
+                        })
                         && claimant
                             .as_ref()
                             .is_none_or(|v| t.claim.as_ref().is_some_and(|c| &c.actor == v))
@@ -485,6 +497,15 @@ fn execute(cli: &Cli) -> Result<Reply> {
             id: id.clone(),
             cancelled: *cancelled,
             note: note.clone(),
+        },
+        Commands::Bypass {
+            id,
+            reason,
+            missing_checks,
+        } => Action::Bypass {
+            id: id.clone(),
+            reason: reason.clone(),
+            missing_checks: missing_checks.clone(),
         },
         Commands::Reopen { id } => Action::Reopen(id.clone()),
         Commands::Defer { id } => Action::Defer(id.clone()),

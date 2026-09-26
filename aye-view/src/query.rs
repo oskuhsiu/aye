@@ -136,7 +136,7 @@ impl App {
             crate::focus::ids(state, &self.relations, root)
         } else if matches!(
             self.query.filters.state.as_deref(),
-            Some("closed" | "closed(done)" | "closed(cancelled)")
+            Some("closed" | "closed(done)" | "closed(cancelled)" | "closed(bypassed)")
         ) {
             state.tasks.keys().cloned().collect()
         } else {
@@ -273,6 +273,7 @@ fn options(state: &State, field: usize) -> Vec<String> {
             "in_progress",
             "blocked",
             "deferred",
+            "closed(bypassed)",
             "closed(done)",
             "closed(cancelled)",
             "closed",

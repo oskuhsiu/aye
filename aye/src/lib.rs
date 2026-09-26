@@ -1,5 +1,6 @@
 mod assignment;
 mod batch;
+mod bypass;
 mod cli;
 mod domain;
 pub mod error;
@@ -9,4 +10,5 @@ pub mod reader;
 mod store;
 mod sync;
 
+pub use bypass::{BYPASSED_LABEL, is_bypassed};
 pub use cli::run_cli;

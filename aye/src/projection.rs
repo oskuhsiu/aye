@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::is_bypassed;
 use crate::model::{State, Task};
 use crate::store::{self, Files, Snapshot};
 use serde_json::{Value, json};
@@ -21,7 +22,7 @@ fn compact(task: &Task) -> Value {
 }
 pub fn show(state: &State, task: &Task) -> Value {
     let blocked_by = state.blocked_by(task);
-    let blocking_tasks:Vec<_>=blocked_by.iter().filter_map(|id|state.tasks.get(id)).map(|t|json!({"id":t.id,"title":t.title,"status":t.status,"resolution":t.resolution,"effective_state":state.effective(t)})).collect();
+    let blocking_tasks:Vec<_>=blocked_by.iter().filter_map(|id|state.tasks.get(id)).map(|t|json!({"id":t.id,"title":t.title,"status":t.status,"resolution":t.resolution,"effective_state":state.effective(t),"bypassed":is_bypassed(t)})).collect();
     let children: Vec<_> = state
         .tasks
         .values()
@@ -40,11 +41,14 @@ pub fn show(state: &State, task: &Task) -> Value {
         .filter(|t| t.discovered_from.as_deref() == Some(task.id.as_str()))
         .map(|t| &t.id)
         .collect();
-    json!({"task":task,"computed":{"effective_state":state.effective(task),"blocked_by":blocked_by,"blocking_tasks":blocking_tasks,"children":children,"blocks":blocks,"discovered":discovered}})
+    json!({"task":task,"computed":{"effective_state":state.effective(task),"bypassed":is_bypassed(task),"blocked_by":blocked_by,"blocking_tasks":blocking_tasks,"children":children,"blocks":blocks,"discovered":discovered}})
 }
 fn counts(state: &State) -> Value {
-    let mut counts = json!({"total":state.tasks.len(),"ready":0,"blocked":0,"in_progress":0,"deferred":0,"closed_done":0,"closed_cancelled":0});
+    let mut counts = json!({"total":state.tasks.len(),"ready":0,"blocked":0,"in_progress":0,"deferred":0,"closed_done":0,"closed_cancelled":0,"bypassed":0});
     for task in state.tasks.values() {
+        if is_bypassed(task) {
+            counts["bypassed"] = json!(counts["bypassed"].as_u64().unwrap() + 1);
+        }
         let key = match state.effective(task) {
             "closed" if task.resolution.as_deref() == Some("done") => "closed_done",
             "closed" => "closed_cancelled",
@@ -125,6 +129,7 @@ pub fn report(state: &State) -> String {
         "deferred",
         "closed_done",
         "closed_cancelled",
+        "bypassed",
     ] {
         out.push_str(&format!("- {key}: {}\n", c[key]));
     }
@@ -136,6 +141,9 @@ pub fn report(state: &State) -> String {
         .collect();
     closed.sort_by(|a, b| b.closed_at.cmp(&a.closed_at).then_with(|| a.id.cmp(&b.id)));
     closed.truncate(20);
+    let mut bypassed: Vec<_> = state.tasks.values().filter(|t| is_bypassed(t)).collect();
+    bypassed.sort_by(|a, b| b.closed_at.cmp(&a.closed_at).then_with(|| a.id.cmp(&b.id)));
+    bypassed.truncate(20);
     let mut discovered: Vec<_> = state
         .tasks
         .values()
@@ -164,6 +172,7 @@ pub fn report(state: &State) -> String {
         )
     })
     .collect();
+    sections.push(("Last 20 Bypassed", bypassed));
     sections.push(("Last 20 Closed", closed));
     sections.push(("Last 20 Discovered", discovered));
     for (title, tasks) in sections {
@@ -196,12 +205,18 @@ pub fn report(state: &State) -> String {
                         out.push_str(&format!(
                             " ({}, {})",
                             escaped(&t.title),
-                            t.resolution.as_deref().unwrap_or(&t.status)
+                            if is_bypassed(t) {
+                                "bypassed"
+                            } else {
+                                t.resolution.as_deref().unwrap_or(&t.status)
+                            }
                         ));
                     }
                 }
             }
-            if let Some(resolution) = &task.resolution {
+            if is_bypassed(task) {
+                out.push_str(" — bypassed");
+            } else if let Some(resolution) = &task.resolution {
                 out.push_str(&format!(" — {resolution}"));
             }
             if let Some(origin) = &task.discovered_from {
@@ -252,6 +267,7 @@ pub fn warnings(state: &State) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BYPASSED_LABEL;
     use crate::model::ManualBlock;
     const NOW: &str = "2026-09-17T03:10:00.000Z";
     fn task(n: usize) -> Task {
@@ -286,12 +302,31 @@ mod tests {
         let manifest: Value = serde_json::from_slice(&files["manifest.json"]).unwrap();
         assert_eq!(manifest["counts"]["ready"], 2);
         assert_eq!(manifest["counts"]["blocked"], 1);
+        assert_eq!(manifest["counts"]["bypassed"], 0);
         assert_eq!(manifest["counts"]["total"], 3);
         let detail = show(&s, &c);
         assert_eq!(detail["computed"]["blocking_tasks"][0]["id"], a.id);
         assert_eq!(show(&s, &a)["computed"]["blocks"], json!([c.id]));
         assert_eq!(show(&s, &b)["computed"]["children"], json!([c.id]));
         assert_eq!(show(&s, &b)["computed"]["discovered"], json!([c.id]));
+    }
+    #[test]
+    fn bypass_is_visible_without_changing_dependency_resolution() {
+        let mut s = State::empty();
+        let mut bypassed = task(1);
+        bypassed.status = "closed".into();
+        bypassed.resolution = Some("done".into());
+        bypassed.closed_at = Some(NOW.into());
+        bypassed.labels.push(BYPASSED_LABEL.into());
+        s.tasks.insert(bypassed.id.clone(), bypassed.clone());
+        let files = build(&s, "oid").unwrap();
+        let manifest: Value = serde_json::from_slice(&files["manifest.json"]).unwrap();
+        assert_eq!(manifest["counts"]["closed_done"], 1);
+        assert_eq!(manifest["counts"]["bypassed"], 1);
+        assert_eq!(show(&s, &bypassed)["computed"]["bypassed"], true);
+        let report = report(&s);
+        assert!(report.contains("## Last 20 Bypassed"));
+        assert!(report.contains("— bypassed"));
     }
     #[test]
     fn report_limits_orders_ties_and_escapes_user_content() {

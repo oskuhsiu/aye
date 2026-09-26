@@ -1,4 +1,6 @@
 pub mod app;
+#[cfg(test)]
+mod bypass_tests;
 pub mod graph;
 pub mod model;
 #[cfg(test)]
