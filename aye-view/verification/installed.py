@@ -153,6 +153,40 @@ def seed_scale(repo):
     assert len(aye(repo, 'ready', '--all')) == 100
 
 
+def seed_browsing(repo):
+    """Create a compact graph with 40 active and 120 recently closed tasks."""
+    sample = aye(repo, 'create', 'Browse template')['task']
+    parent = git(repo, 'rev-parse', STATE)
+    message = 'Mouse browsing fixture\n'
+    parts = [f'commit {STATE}\ncommitter Verification <viewer@example.invalid> '
+             f'1000000000 +0000\ndata {len(message)}\n{message}from {parent}\nD tasks\n']
+    now = datetime.now(timezone.utc)
+    for n in range(160):
+        task = copy.deepcopy(sample)
+        task.update(id=task_id(n), title=f'Browse {n:03}')
+        if n < 40:
+            task['depends_on'] = ([task_id(n - 1)]
+                                  if n % 10 else [])
+        else:
+            task.update(status='closed',
+                        resolution='cancelled' if n % 2 else 'done',
+                        closed_at=stamp(now - timedelta(seconds=n - 40)))
+            if n % 2 == 0:
+                task['labels'] = ['even']
+        if n == 0:
+            task['description'] = '\n'.join(
+                f'Detail line {i:02}: 中文內容' for i in range(60))
+        body = json.dumps(task, ensure_ascii=False) + '\n'
+        parts.append(f'M 100644 inline tasks/{task["id"][2:4]}/{task["id"]}.json\n'
+                     f'data {len(body.encode())}\n{body}\n')
+    parts.append('\ndone\n')
+    git(repo, 'fast-import', '--quiet', input=''.join(parts))
+    records = aye(repo, 'list', '--all')
+    assert len(records) == 160
+    assert sum(r['task']['status'] != 'closed' for r in records) == 40
+    assert len(aye(repo, 'ready', '--all')) == 4
+
+
 class NetworkTrap(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
@@ -271,8 +305,8 @@ sys.exit(status)
         os.write(self.master, keys)
         return self.wait(name, predicate, start)
 
-    def cell(self, value, occurrence=0):
-        """Find a displayed string and return its exact 0-based cell."""
+    def cells(self, value):
+        """Find every occurrence of a displayed string in exact cells."""
         assert value
         matches = []
         for row, line in enumerate(self.screen.display):
@@ -286,19 +320,64 @@ sys.exit(status)
                 if col >= 0 and width > 0 and col + width <= self.screen.columns:
                     matches.append((col, row))
                 offset += max(1, len(value))
+        return matches
+
+    def cell(self, value, occurrence=0):
+        """Find a displayed string and return its exact 0-based cell."""
+        matches = self.cells(value)
         assert matches, (value, self.text())
         return matches[occurrence]
 
+    def mouse_sequence(self, name, events, predicate):
+        start = time.monotonic()
+        os.write(self.master, b''.join(events))
+        return self.wait(name, predicate, start)
+
     def mouse_click(self, name, col, row, predicate, button=0):
         """Send a press/release click using 0-based cells."""
-        start = time.monotonic()
-        os.write(self.master, sgr_mouse(button, col, row) +
-                 sgr_mouse(button, col, row, release=True))
-        return self.wait(name, predicate, start)
+        return self.mouse_sequence(
+            name,
+            [sgr_mouse(button, col, row), sgr_mouse(button, col, row, release=True)],
+            predicate,
+        )
 
     def mouse_text_click(self, name, value, predicate, occurrence=0, button=0):
         col, row = self.cell(value, occurrence)
         return self.mouse_click(name, col, row, predicate, button)
+
+    def mouse_press(self, name, col, row, predicate):
+        return self.mouse_sequence(name, [sgr_mouse(0, col, row)], predicate)
+
+    def mouse_motion(self, name, col, row, predicate):
+        return self.mouse_sequence(name, [sgr_mouse(32, col, row)], predicate)
+
+    def mouse_move(self, name, col, row, predicate):
+        """Send passive SGR Moved (button 35: motion without a button)."""
+        return self.mouse_sequence(name, [sgr_mouse(35, col, row)], predicate)
+
+    def mouse_release(self, name, col, row, predicate):
+        return self.mouse_sequence(name, [sgr_mouse(0, col, row, release=True)], predicate)
+
+    def mouse_drag(self, name, start, end, predicate, release=None):
+        """Send left press, left drag motion and release in cell coordinates."""
+        release = end if release is None else release
+        return self.mouse_sequence(
+            name,
+            [sgr_mouse(0, *start), sgr_mouse(32, *end),
+             sgr_mouse(0, *release, release=True)],
+            predicate,
+        )
+
+    def mouse_wheel(self, name, col, row, direction, predicate, count=1, shift=False):
+        """Send SGR wheel events, using Crossterm's four direction codes."""
+        codes = {'up': 64, 'down': 65, 'left': 66, 'right': 67}
+        assert direction in codes and count > 0
+        button = codes[direction] + (4 if shift else 0)
+        return self.mouse_sequence(
+            name,
+            [sgr_mouse(button, col, row) for _ in range(count)],
+            predicate,
+        )
 
     def finish(self, keys=b'q', expected=0):
         if self.proc.poll() is None and keys:
@@ -341,12 +420,29 @@ def contains(value):
     return lambda text: value in text
 
 
+def pane_cell(session, value, x_min, x_max, y_min=0, y_max=None):
+    """Locate text only when its cell lies in the expected pane rectangle."""
+    y_max = session.screen.lines if y_max is None else y_max
+    for col, row in session.cells(value):
+        if x_min <= col < x_max and y_min <= row < y_max:
+            return col, row
+    raise AssertionError((value, (x_min, x_max, y_min, y_max), session.text()))
+
+
 def scale_case(base, binary, audit, remote):
     repo, linked = fixture(base, 'scale', remote)
     seed_scale(repo)
     before = snapshot(repo, linked)
     with Session(linked / 'nested', base / 'scale-pty', binary, audit) as session:
         session.wait('startup', contains('1010 visible tasks'), session.started)
+        passive_text = session.text()
+        passive_raw = bytes(session.raw)
+        passive_frames = session.frames
+        session.mouse_move('passive-motion', 10, 10, lambda text: True)
+        session.read(.5)
+        assert session.text() == passive_text
+        assert bytes(session.raw) == passive_raw
+        assert session.frames == passive_frames
         session.key('list', b'\t', contains('aye-view · List'))
         session.key('search-open', b'/', contains('Search'))
         session.key('search-query', b'Scale 00999', contains('> Scale 00999'))
@@ -504,6 +600,242 @@ def mouse_case(base, binary, audit, remote):
     return report
 
 
+def mouse_browsing_case(base, binary, audit, remote):
+    """Exercise Recent/History browsing, wheel routing and graph gestures."""
+    repo, linked = fixture(base, 'browsing', remote)
+    seed_browsing(repo)
+    before = snapshot(repo, linked)
+    recent_initial_title = 'Browse 040'
+    recent_title = 'Browse 043'
+    recent_id = task_id(43)
+    detail_title = 'Browse 000'
+    detail_id = task_id(0)
+    list_title = 'Browse 012'
+    list_id = task_id(12)
+    history_final_title = 'Browse 158'
+    history_final_id = task_id(158)
+
+    with Session(linked / 'nested', base / 'browsing-pty', binary, audit,
+                 cols=130, rows=30) as session:
+        session.wait('startup', contains('Current Graph'), session.started)
+        session.key('recent', b'c', contains('Recently closed'))
+        recent_col, recent_row = pane_cell(
+            session, recent_initial_title, 0, 85, 24, 29)
+        recent_before_wheel = session.text()
+        session.mouse_wheel(
+            'recent-wheel', recent_col, recent_row, 'down',
+            lambda text: text != recent_before_wheel
+            and recent_title in text and detail_id in text,
+        )
+        recent_col, recent_row = pane_cell(session, recent_title, 0, 85, 24, 29)
+        session.mouse_click(
+            'recent-click', recent_col, recent_row,
+            lambda text: recent_id in text and recent_title in text,
+        )
+        detail_col, detail_row = pane_cell(session, recent_id, 85, 130, 2, 29)
+        session.mouse_click(
+            'recent-detail-activate', detail_col, detail_row,
+            lambda text: recent_id in text,
+        )
+        session.mouse_text_click(
+            'recent-wide-back', '[Back]',
+            lambda text: 'Recently closed' in text and recent_id in text,
+        )
+
+        session.resize(70, 24)
+        session.wait('recent-narrow',
+                     lambda text: '[Details]' in text and recent_title in text)
+        session.mouse_text_click(
+            'recent-narrow-details', '[Details]',
+            lambda text: '[Back]' in text and recent_id in text,
+        )
+        session.mouse_text_click(
+            'recent-narrow-back', '[Back]',
+            lambda text: 'Recently closed' in text and recent_title in text,
+        )
+
+        session.resize(130, 30)
+        session.wait('recent-wide-again', contains('Recently closed'))
+        session.key('list', b'\t', contains('aye-view · List'))
+        assert 1 <= 4 < 60 and 3 <= 4 < 28
+        selected_before_list_wheel = session.text()
+        session.mouse_wheel(
+            'list-wheel', 4, 4, 'down',
+            lambda text: recent_id in text,
+            count=3,
+        )
+        assert recent_id in session.text() and session.text() != selected_before_list_wheel
+        list_col, list_row = pane_cell(session, list_title, 0, 60, 3, 28)
+        session.mouse_click(
+            'list-after-wheel', list_col, list_row,
+            lambda text: list_id in text and list_title in text,
+        )
+
+        before_list_top = session.text()
+        session.mouse_wheel(
+            'list-to-top', 4, 4, 'up',
+            lambda text: text != before_list_top and detail_title in text,
+            count=4,
+        )
+        top_col, top_row = pane_cell(session, detail_title, 0, 60, 3, 28)
+        session.mouse_click(
+            'detail-task-row', top_col, top_row,
+            lambda text: detail_id in text and detail_title in text,
+        )
+        detail_col, detail_row = pane_cell(session, detail_id, 55, 130, 2, 29)
+        session.mouse_click(
+            'detail-wheel-activate', detail_col, detail_row,
+            lambda text: detail_id in text,
+        )
+        session.mouse_wheel(
+            'detail-wheel-down', detail_col, detail_row, 'down',
+            lambda text: detail_id in text and text.count(detail_title) == 1,
+        )
+        session.mouse_wheel(
+            'detail-wheel-up', detail_col, detail_row, 'up',
+            lambda text: detail_id in text and text.count(detail_title) >= 2,
+        )
+        session.mouse_text_click(
+            'detail-back', '[Back]',
+            lambda text: 'aye-view · List' in text and detail_id in text,
+        )
+
+        session.key('help', b'?', contains('Help · j/k'))
+        session.mouse_wheel(
+            'help-wheel', 4, 4, 'down',
+            lambda text: 'Help · j/k' in text and 'Focus root stays fixed' in text,
+            count=12,
+        )
+        session.key('help-close', b'\x1b',
+                    lambda text: 'aye-view · List' in text and detail_id in text)
+
+        session.key('history', b'h', contains('History · 50/120'))
+        history_col, history_row = pane_cell(
+            session, recent_initial_title, 0, 60, 3, 29)
+        session.mouse_click(
+            'history-first-click', history_col, history_row,
+            lambda text: task_id(40) in text and recent_initial_title in text,
+        )
+        session.resize(70, 24)
+        session.wait('history-narrow',
+                     lambda text: 'History ·' in text and '[Details]' in text)
+        session.mouse_text_click(
+            'history-narrow-details', '[Details]',
+            lambda text: '[Back]' in text and task_id(40) in text,
+        )
+        session.mouse_text_click(
+            'history-narrow-back', '[Back]',
+            lambda text: 'History ·' in text and recent_initial_title in text,
+        )
+        session.resize(130, 30)
+        session.wait('history-wide', contains('History ·'))
+        session.key(
+            'history-filter-even', b'\x1b[B' * 3 + b'\x1b[C\r',
+            lambda text: 'History · 50/60' in text,
+        )
+        assert 1 <= 4 < 60 and 3 <= 4 < 29
+        session.mouse_wheel(
+            'history-final-wheel', 4, 4, 'down',
+            lambda text: history_final_title in text and task_id(40) in text,
+            count=20,
+        )
+        final_col, final_row = pane_cell(session, history_final_title, 0, 60, 3, 29)
+        session.mouse_click(
+            'history-final-click', final_col, final_row,
+            lambda text: history_final_id in text and history_final_title in text,
+        )
+        session.resize(70, 24)
+        session.wait('history-final-narrow',
+                     lambda text: 'History ·' in text and '[Details]' in text)
+        session.mouse_text_click(
+            'history-final-details', '[Details]',
+            lambda text: '[Back]' in text and history_final_id in text,
+        )
+        session.mouse_text_click(
+            'history-final-back', '[Back]',
+            lambda text: 'History ·' in text and history_final_title in text,
+        )
+        unchanged(before, repo, linked)
+        browse_report = session.finish()
+
+    unchanged(before, repo, linked)
+
+    with Session(linked / 'nested', base / 'graph-standard-pty', binary, audit,
+                 cols=130, rows=30) as session:
+        session.wait('graph-startup', contains('Current Graph'), session.started)
+        graph_point = (75, 23)
+        assert 1 <= graph_point[0] < 85 and 3 <= graph_point[1] < 28
+        before_wheel = session.text()
+        session.mouse_wheel(
+            'graph-vertical-wheel', *graph_point, 'down',
+            lambda text: text != before_wheel and detail_id in text,
+        )
+        before_horizontal = session.text()
+        session.mouse_wheel(
+            'graph-horizontal-wheel', *graph_point, 'right',
+            lambda text: text != before_horizontal and detail_id in text,
+        )
+        before_shift = session.text()
+        session.mouse_wheel(
+            'graph-shift-wheel', *graph_point, 'down',
+            lambda text: text != before_shift and detail_id in text,
+            shift=True,
+        )
+        before_drag = session.text()
+        session.mouse_drag(
+            'graph-drag', graph_point, (70, 19),
+            lambda text: text != before_drag and detail_id in text,
+            release=(125, 29),
+        )
+        session.mouse_press('drag-cancel-press', *graph_point,
+                            lambda text: True)
+        session.mouse_motion('drag-cancel-motion', 70, 19,
+                             lambda text: True)
+        session.resize(100, 30)
+        session.read(.2)
+        resized = session.text()
+        session.mouse_release('drag-cancel-release', 99, 29,
+                              lambda text: True)
+        session.read(.2)
+        assert session.text() == resized
+        assert session.proc.poll() is None
+        unchanged(before, repo, linked)
+        standard_report = session.finish()
+
+    with Session(linked / 'nested', base / 'graph-compact-pty', binary, audit,
+                 cols=130, rows=30) as session:
+        session.wait('compact-startup', contains('Current Graph'), session.started)
+        session.key('compact', b'-', contains('Compact'))
+        graph_point = (80, 21)
+        assert 1 <= graph_point[0] < 85 and 3 <= graph_point[1] < 28
+        before_drag = session.text()
+        session.mouse_drag(
+            'compact-graph-drag', graph_point, (70, 18),
+            lambda text: text != before_drag and detail_id in text,
+            release=(125, 29),
+        )
+        unchanged(before, repo, linked)
+        compact_report = session.finish()
+
+    unchanged(before, repo, linked)
+    assert browse_report['mouse_capture_verified'] is True
+    assert standard_report['mouse_capture_verified'] is True
+    assert compact_report['mouse_capture_verified'] is True
+    return {
+        'readonly': True,
+        'recent_history_clicks': True,
+        'wheel_surfaces': ['List', 'Detail', 'Help', 'History', 'Graph'],
+        'history_final_visible': True,
+        'graph_drag_densities': ['Standard', 'Compact'],
+        'terminal_restored': True,
+        'sessions': {
+            'browsing': browse_report,
+            'graph_standard': standard_report,
+            'graph_compact': compact_report,
+        },
+    }
+
+
 def replace_project(repo, base, version):
     parent = git(repo, 'rev-parse', STATE)
     project = json.loads(git(repo, 'show', parent + ':project.json'))
@@ -617,6 +949,7 @@ def main():
         remote = f'http://127.0.0.1:{server.server_address[1]}/unavailable.git'
         try:
             for name, case in [('scale', scale_case), ('mouse', mouse_case),
+                               ('mouse-browsing', mouse_browsing_case),
                                ('live', live_case), ('errors', error_cases)]:
                 print(f'Running {name}', flush=True)
                 report[name] = case(base, binary, audit, remote)
