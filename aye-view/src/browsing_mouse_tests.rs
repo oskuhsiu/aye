@@ -555,7 +555,7 @@ fn redraw_geometry_alone_cancels_capture_and_reload_clamps_independent_list() {
     snapshot
         .state
         .tasks
-        .retain(|id, _| id <= "t-0000000000000000000b");
+        .retain(|id, _| id.as_str() <= "t-0000000000000000000b");
     list.replace_snapshot(snapshot);
     let frame = render(&mut list, 110, 16);
     assert_eq!(list.selected_id.as_deref(), Some("t-00000000000000000000"));

@@ -152,6 +152,9 @@ fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
     let title = format!("{} · {title}", app.density.label());
     let block = block(&title, app.pane == Pane::Main);
     let inner = block.inner(area);
+    if app.graph_drag.is_some_and(|drag| drag.area != inner) {
+        app.graph_drag = None;
+    }
     frame.render_widget(block, area);
     app.pointer_hits.add(inner, Target::Surface(Surface::Graph));
     navigation_control(frame, app, area, Target::Details);

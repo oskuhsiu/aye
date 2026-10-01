@@ -437,12 +437,11 @@ def scale_case(base, binary, audit, remote):
         session.wait('startup', contains('1010 visible tasks'), session.started)
         passive_text = session.text()
         passive_raw = bytes(session.raw)
-        passive_frames = session.frames
-        session.mouse_move('passive-motion', 10, 10, lambda text: True)
+        os.write(session.master, sgr_mouse(35, 10, 10) * 500)
         session.read(.5)
         assert session.text() == passive_text
         assert bytes(session.raw) == passive_raw
-        assert session.frames == passive_frames
+        session.capture('passive-motion-no-output')
         session.key('list', b'\t', contains('aye-view · List'))
         session.key('search-open', b'/', contains('Search'))
         session.key('search-query', b'Scale 00999', contains('> Scale 00999'))
@@ -466,7 +465,8 @@ def scale_case(base, binary, audit, remote):
         assert session.proc.poll() is None
         session.resize(190, 40)
         session.key('restore-current', b'g', contains('Current Graph'))
-        session.key('help', b'?', contains('without joining'))
+        session.key('help', b'?', contains('Help · j/k'))
+        session.key('help-topology', b'\x1b[6~', contains('without joining'))
         session.key('help-close', b'\x1b', contains('Current Graph'))
         session.read(1.6)  # More than three unchanged watcher polls.
         session.capture('unchanged-polls')
@@ -657,7 +657,6 @@ def mouse_browsing_case(base, binary, audit, remote):
         session.resize(130, 30)
         session.wait('recent-wide-again', contains('Recently closed'))
         session.key('list', b'\t', contains('aye-view · List'))
-        assert 1 <= 4 < 60 and 3 <= 4 < 28
         selected_before_list_wheel = session.text()
         session.mouse_wheel(
             'list-wheel', 4, 4, 'down',
@@ -683,22 +682,18 @@ def mouse_browsing_case(base, binary, audit, remote):
             lambda text: detail_id in text and detail_title in text,
         )
         detail_col, detail_row = pane_cell(session, detail_id, 55, 130, 2, 29)
-        session.mouse_click(
-            'detail-wheel-activate', detail_col, detail_row,
-            lambda text: detail_id in text,
-        )
         session.mouse_wheel(
             'detail-wheel-down', detail_col, detail_row, 'down',
-            lambda text: detail_id in text and text.count(detail_title) == 1,
+            lambda text: text.count(detail_title) == 1,
         )
         session.mouse_wheel(
             'detail-wheel-up', detail_col, detail_row, 'up',
             lambda text: detail_id in text and text.count(detail_title) >= 2,
         )
-        session.mouse_text_click(
-            'detail-back', '[Back]',
-            lambda text: 'aye-view · List' in text and detail_id in text,
-        )
+        session.key('detail-wheel-kept-main', b'j', contains(task_id(1)))
+        top_col, top_row = pane_cell(session, detail_title, 0, 60, 3, 28)
+        session.mouse_click('detail-wheel-restore-task', top_col, top_row, contains(detail_id))
+
 
         session.key('help', b'?', contains('Help · j/k'))
         session.mouse_wheel(
@@ -730,10 +725,9 @@ def mouse_browsing_case(base, binary, audit, remote):
         session.resize(130, 30)
         session.wait('history-wide', contains('History ·'))
         session.key(
-            'history-filter-even', b'\x1b[B' * 3 + b'\x1b[C\r',
+            'history-filter-even', b'f' + b'\x1b[B' * 3 + b'\x1b[C\r',
             lambda text: 'History · 50/60' in text,
         )
-        assert 1 <= 4 < 60 and 3 <= 4 < 29
         session.mouse_wheel(
             'history-final-wheel', 4, 4, 'down',
             lambda text: history_final_title in text and task_id(40) in text,
@@ -794,6 +788,9 @@ def mouse_browsing_case(base, binary, audit, remote):
         session.resize(100, 30)
         session.read(.2)
         resized = session.text()
+        session.mouse_motion('drag-after-resize', 50, 10, lambda text: True)
+        session.read(.2)
+        assert session.text() == resized
         session.mouse_release('drag-cancel-release', 99, 29,
                               lambda text: True)
         session.read(.2)
@@ -824,7 +821,7 @@ def mouse_browsing_case(base, binary, audit, remote):
     return {
         'readonly': True,
         'recent_history_clicks': True,
-        'wheel_surfaces': ['List', 'Detail', 'Help', 'History', 'Graph'],
+        'wheel_surfaces': ['List', 'Recent', 'Detail', 'Help', 'History', 'Graph'],
         'history_final_visible': True,
         'graph_drag_densities': ['Standard', 'Compact'],
         'terminal_restored': True,

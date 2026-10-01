@@ -30,7 +30,10 @@ Git plumbing and later changed by the explicit installed aye writer. No real
 project tasks or remote are used. The suite does not delete prior runs.
 
 Coverage includes Graph/List/Search/Filter/Focus/Recent/History/Detail/Help,
-wide/narrow/tiny resizing, normal/Ctrl-c/error exits, live linked-worktree
+wide/narrow/tiny resizing, Standard/Compact mouse clicks, pointed-surface wheel
+scrolling, background Graph drag/cancellation, independent list viewports,
+final matching History rows, passive SGR motion and capture cleanup,
+normal/Ctrl-c/error exits, live linked-worktree
 create/claim/edit/close, packed refs, last-good errors and manual/automatic
 recovery. The scale fixture has 100 chains of ten active nodes, ten completed
 ancestors and 9,000 closed tasks: 10,000 total, 1,000 active, 100 ready, 1,010
@@ -52,3 +55,12 @@ reload timings include
 polling, parsing, rendering and snapshot audit overhead. Reports identify the
 installed binary hash, platform and source base. Keep measured limitations and
 manual frame-review findings with the result before claiming acceptance.
+
+Mouse input uses xterm SGR terminal-cell sequences through the same Crossterm
+reducer as runtime input. Frame-based Rust tests additionally cover large world
+coordinates, scope/reveal retention, reported focus loss, geometry/reload
+cancellation and bounded History row materialization. Capture enable/disable
+bytes are required on successful sessions; startup failures occur before capture.
+A shared cleanup-helper byte test and source review cover panic/error routing;
+the suite does not inject a post-setup panic or test physical terminal gestures
+and copy overrides. See [mouse contract and limits](MOUSE.md).
