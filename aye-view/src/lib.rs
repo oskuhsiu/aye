@@ -24,3 +24,8 @@ mod focus_tests;
 
 #[cfg(test)]
 mod zoom_tests;
+
+#[cfg(test)]
+mod mouse_tests;
+
+mod pointer;

@@ -2,6 +2,7 @@ use crate::{
     app::{App, Mode, Pane},
     graph,
     model::{sanitize, status},
+    pointer::{Surface, Target},
 };
 use ratatui::{
     Frame,
@@ -13,6 +14,7 @@ use ratatui::{
 
 pub fn render(frame: &mut Frame, app: &mut App) {
     app.tick_clock();
+    app.pointer_hits.clear();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -106,6 +108,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         render_help(frame, app);
     }
     crate::query::render(frame, app);
+    if app.help || app.query.modal.is_some() {
+        app.pointer_hits.clear();
+    }
 }
 fn block(title: &str, focused: bool) -> Block<'_> {
     Block::default()
@@ -125,6 +130,7 @@ fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
     let area = crate::history::render_recent(frame, app, area);
     if app.mode == Mode::List {
         render_list(frame, app, area);
+        navigation_control(frame, app, area, Target::Details);
         return;
     }
     app.ensure_graph();
@@ -142,6 +148,8 @@ fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = block(&title, app.pane == Pane::Main);
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    app.pointer_hits.add(inner, Target::Surface(Surface::Graph));
+    navigation_control(frame, app, area, Target::Details);
     if app.graph.nodes.is_empty() {
         frame.render_widget(
             Paragraph::new(if app.query.filters.active() {
@@ -162,6 +170,26 @@ fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
         app.graph_anchor = app.selected_id.clone();
         app.graph_size = (inner.width, inner.height);
     }
+    // Clip in wide world coordinates before converting to terminal cells.
+    for node in app.graph.nodes.values() {
+        let x = node.x - app.graph_viewport.x;
+        let y = node.y - app.graph_viewport.y;
+        let left = x.max(0).min(i64::from(inner.width));
+        let top = y.max(0).min(i64::from(inner.height));
+        let right = (x + app.density.node_width()).clamp(0, i64::from(inner.width));
+        let bottom = (y + app.density.node_height()).clamp(0, i64::from(inner.height));
+        if right > left && bottom > top {
+            app.pointer_hits.add(
+                Rect::new(
+                    inner.x + left as u16,
+                    inner.y + top as u16,
+                    (right - left) as u16,
+                    (bottom - top) as u16,
+                ),
+                Target::Task(node.id.clone()),
+            );
+        }
+    }
     graph::draw(
         frame,
         inner,
@@ -175,6 +203,8 @@ fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
 fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = block("List", app.pane == Pane::Main);
     let ids = app.graph_ids();
+    let inner = block.inner(area);
+    app.pointer_hits.add(inner, Target::Surface(Surface::List));
     if ids.is_empty() {
         frame.render_widget(
             Paragraph::new(if app.query.filters.active() {
@@ -215,6 +245,17 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
         &mut state,
     );
     app.list_offset = state.offset();
+    for (row, id) in ids
+        .iter()
+        .skip(state.offset())
+        .take(usize::from(inner.height))
+        .enumerate()
+    {
+        app.pointer_hits.add(
+            Rect::new(inner.x, inner.y + row as u16, inner.width, 1),
+            Target::Task(id.clone()),
+        );
+    }
 }
 fn relation_lines(app: &App, ids: &[String]) -> String {
     if ids.is_empty() {
@@ -337,6 +378,8 @@ fn render_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         app.pane == Pane::Detail,
     );
     let inner = block.inner(area);
+    app.pointer_hits
+        .add(inner, Target::Surface(Surface::Detail));
     let text = detail_text(app);
     // Wrap ourselves to retain usize scrolling beyond Paragraph's u16 offset.
     // Ratatui Text spans supply terminal cell widths, never byte slicing.
@@ -352,6 +395,27 @@ fn render_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         .collect::<Vec<_>>();
     frame.render_widget(block, area);
     frame.render_widget(Paragraph::new(Text::from(visible)), inner);
+    navigation_control(frame, app, area, Target::Back);
+}
+fn navigation_control(frame: &mut Frame, app: &mut App, area: Rect, target: Target) {
+    if app.selected_id.is_none() {
+        return;
+    }
+    let label = if matches!(target, Target::Back) {
+        "[Back]"
+    } else {
+        "[Details]"
+    };
+    let width = label.len() as u16;
+    if area.width < width + 2 || area.height < 2 {
+        return;
+    }
+    let control = Rect::new(area.right() - width - 1, area.y, width, 1);
+    frame.render_widget(
+        Paragraph::new(label).style(Style::default().add_modifier(Modifier::BOLD)),
+        control,
+    );
+    app.pointer_hits.add(control, target);
 }
 fn wrapped_lines(text: &str, width: usize) -> Vec<String> {
     use ratatui::text::Span;
@@ -403,7 +467,7 @@ fn render_help(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Clear, area);
     let block = block("Help · j/k PgUp/Dn Scroll · Esc Back", true);
     let inner = block.inner(area);
-    let text = "Graph: Left / Ctrl-h = prerequisite\nGraph: Right / l = dependent\nGraph: Up/Down or k/j = same layer\nShift-arrows: pan without changing selection\nGraph Main: - Compact; +/= Standard; 0 reset\nZoom preserves selection and viewport context.\nEnter: Detail; Esc: return to main pane\nF: focus selected ancestors and descendants\ng: full Current Graph; Esc leaves focused Main\nFocus clears filters; later filters intersect.\nTab: Graph/List (History: pane switch)\nDetail: j/k or arrows scroll; PgUp/PgDown page\n?: Help; q / Ctrl-c: Quit\n\nr: Refresh local state (poll every 500 ms)\n/ Search all tasks; arrows select; Enter reveal\nSearch outside Focus exits that focus.\nf Filters: up/down field, left/right cycle\nc clears filter draft; Enter applies; Esc cancels\nc: Recent 24h; ]: next unrelated recent task\nRecent is hidden during Focus.\nh: all closed History; Esc returns\nHistory arrows/PgUp/PgDown load more rows.\n\n● ready    ▶ in progress    ! blocked\n⏸ deferred    ✓ done    × cancelled\nCancelled prerequisites do not unlock tasks.\n\nB → A means A depends on B.\nB completion unlocks A.\nParent/discovery are detail context only.\n╳: lines cross without joining.\n\nCurrent Graph includes closed prerequisites.\nFocus root stays fixed as selection moves.";
+    let text = "Mouse: click a task; click a pane to activate it\n[Details] opens selected task; [Back] returns\nMouse reporting needs terminal support/settings.\nCopy: use your terminal reporting override\n(iTerm2: hold Option). Keyboard keys still work.\n\nGraph: Left / Ctrl-h = prerequisite\nGraph: Right / l = dependent\nGraph: Up/Down or k/j = same layer\nShift-arrows: pan without changing selection\nGraph Main: - Compact; +/= Standard; 0 reset\nZoom preserves selection and viewport context.\nEnter: Detail; Esc: return to main pane\nF: focus selected ancestors and descendants\ng: full Current Graph; Esc leaves focused Main\nFocus clears filters; later filters intersect.\nTab: Graph/List (History: pane switch)\nDetail: j/k or arrows scroll; PgUp/PgDown page\n?: Help; q / Ctrl-c: Quit\n\nr: Refresh local state (poll every 500 ms)\n/ Search all tasks; arrows select; Enter reveal\nSearch outside Focus exits that focus.\nf Filters: up/down field, left/right cycle\nc clears filter draft; Enter applies; Esc cancels\nc: Recent 24h; ]: next unrelated recent task\nRecent is hidden during Focus.\nh: all closed History; Esc returns\nHistory arrows/PgUp/PgDown load more rows.\n\n● ready    ▶ in progress    ! blocked\n⏸ deferred    ✓ done    × cancelled\nCancelled prerequisites do not unlock tasks.\n\nB → A means A depends on B.\nB completion unlocks A.\nParent/discovery are detail context only.\n╳: lines cross without joining.\n\nCurrent Graph includes closed prerequisites.\nFocus root stays fixed as selection moves.";
     let lines = wrapped_lines(text, usize::from(inner.width));
     app.help_page = usize::from(inner.height).saturating_sub(1).max(1);
     app.help_max_scroll = lines.len().saturating_sub(usize::from(inner.height));

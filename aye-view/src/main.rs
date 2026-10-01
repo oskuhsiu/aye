@@ -1,7 +1,7 @@
 use aye::{error::Error, reader::Reader};
 use aye_view::{app::App, model::sanitize, view, watch::Watcher};
 use crossterm::{
-    event::{self, Event},
+    event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -15,8 +15,16 @@ struct TerminalGuard;
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
+        let _ = restore_terminal(io::stdout());
     }
+}
+fn restore_terminal(mut output: impl io::Write) -> io::Result<()> {
+    execute!(
+        output,
+        DisableMouseCapture,
+        LeaveAlternateScreen,
+        crossterm::cursor::Show
+    )
 }
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let reader = Reader::open(std::env::current_dir()?)?;
@@ -30,18 +38,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     enable_raw_mode()?;
     let _guard = TerminalGuard;
-    execute!(io::stdout(), EnterAlternateScreen)?;
+    execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
+    let mut redraw = true;
     while !app.quit {
         if let Some(update) = watcher.take_update() {
             app.apply_update(update);
+            redraw = true;
         }
-        terminal.draw(|frame| view::render(frame, &mut app))?;
-        if event::poll(Duration::from_millis(250))?
-            && let Event::Key(key) = event::read()?
-        {
-            app.handle_key(key);
+        redraw |= app.tick_clock();
+        if redraw {
+            terminal.draw(|frame| view::render(frame, &mut app))?;
+            redraw = false;
+        }
+        if event::poll(Duration::from_millis(250))? {
+            redraw = app.handle_event(event::read()?);
             if app.refresh_requested {
                 app.refresh_requested = false;
                 watcher.refresh();
@@ -69,11 +81,26 @@ fn main() {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
+        let _ = restore_terminal(io::stdout());
         previous(info);
     }));
     if let Err(error) = run() {
         eprintln!("aye-view: {}", sanitize(&error.to_string()));
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn shared_normal_error_and_panic_cleanup_disables_all_mouse_modes() {
+        let mut output = Vec::new();
+        super::restore_terminal(&mut output).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        for mode in [1000, 1002, 1003, 1006, 1015] {
+            assert!(output.contains(&format!("\x1b[?{mode}l")), "{output:?}");
+        }
+        assert!(output.contains("\x1b[?1049l"));
+        assert!(output.contains("\x1b[?25h"));
     }
 }

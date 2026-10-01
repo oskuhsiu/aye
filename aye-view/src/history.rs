@@ -154,8 +154,8 @@ impl App {
             .cloned()
             .collect()
     }
-    pub fn tick_clock(&mut self) {
-        self.tick_time(self.recent.fixed_now.unwrap_or_else(Utc::now));
+    pub fn tick_clock(&mut self) -> bool {
+        self.tick_time(self.recent.fixed_now.unwrap_or_else(Utc::now))
     }
     /// Advance time without a ref change. Most frames only compare the next boundary.
     pub fn tick_time(&mut self, now: DateTime<Utc>) -> bool {

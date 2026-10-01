@@ -69,6 +69,23 @@ checks; the viewer does not claim those checks passed. Wide terminals show both
 panes; narrow terminals show the active pane. Up/Down or j/k and PgUp/PgDown scroll
 details, including wrapped Unicode text. Esc returns to the main pane.
 
+## Mouse browsing
+
+In a terminal with mouse reporting enabled, single-click a visible Current
+Graph node or List row to select it. Clicking a pane activates its keyboard
+controls; clicking empty Main keeps the selected task. The compact `[Details]`
+and `[Back]` controls work in wide and narrow layouts. Pane borders are inert
+except for those controls. Search, Filter and Help isolate background clicks.
+Mouse selection works at Standard and Compact graph density.
+
+Mouse reporting can take over terminal text selection. Use your terminal's
+reporting override when copying; in iTerm2, hold Option to temporarily disable
+reporting. Check your terminal's mouse-reporting settings if clicks do not work.
+Keyboard controls remain available. This release is verified using xterm SGR
+mouse input through Unix PTYs; this does not establish compatibility with every
+terminal or physical mouse/touchpad. Mouse navigation is session-only and
+read-only.
+
 ## Keys by mode
 
 Keys are case-sensitive. Search and Filter consume keys before main-view

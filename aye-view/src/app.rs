@@ -17,6 +17,7 @@ pub enum Mode {
 }
 
 pub struct App {
+    pub(crate) pointer_hits: crate::pointer::HitMap,
     pub focus_root: Option<String>,
     pub help_scroll: usize,
     pub help_max_scroll: usize,
@@ -49,6 +50,7 @@ impl App {
     pub fn new(snapshot: ReaderSnapshot) -> Self {
         let visible_ids = current_ids(&snapshot.state);
         Self {
+            pointer_hits: crate::pointer::HitMap::default(),
             focus_root: None,
             help_scroll: 0,
             help_max_scroll: 0,
@@ -84,6 +86,7 @@ impl App {
             || self.graph_key.1 != ids
             || self.graph_key.2 != self.density
         {
+            self.pointer_hits.clear();
             self.graph = Graph::with_density(&self.snapshot.state, &ids, self.density);
             self.graph_key = (self.snapshot.oid.clone(), ids, self.density);
             self.graph_anchor = None;
@@ -94,6 +97,7 @@ impl App {
         if self.density == density {
             return;
         }
+        self.pointer_hits.clear();
         self.ensure_graph();
         let old = self.graph_viewport;
         let (width, height) = (i64::from(self.graph_size.0), i64::from(self.graph_size.1));
@@ -166,6 +170,7 @@ impl App {
         }
     }
     pub fn replace_snapshot(&mut self, snapshot: ReaderSnapshot) {
+        self.pointer_hits.clear();
         let selected = self.selected_id.clone();
         let index = selected
             .as_ref()
@@ -205,6 +210,7 @@ impl App {
         self.refresh_error = None;
     }
     pub fn select(&mut self, id: &str) {
+        self.pointer_hits.clear();
         if self
             .query
             .revealed_id
@@ -239,6 +245,7 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
+        self.pointer_hits.clear();
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.quit = true;
             return;

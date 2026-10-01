@@ -116,6 +116,7 @@ impl App {
     /// Recompute presentation after filters or canonical snapshot replacement.
     /// Preserve selection when possible, otherwise choose its previous list neighbor.
     pub fn refresh_visible(&mut self) {
+        self.pointer_hits.clear();
         let previous = self.selected_id.clone();
         let previous_index = previous
             .as_ref()
@@ -174,11 +175,13 @@ impl App {
         }
     }
     pub fn open_search(&mut self) {
+        self.pointer_hits.clear();
         let mut search = Search::default();
         search.refresh(&self.snapshot.state);
         self.query.modal = Some(Modal::Search(search));
     }
     pub fn open_filters(&mut self) {
+        self.pointer_hits.clear();
         self.query.modal = Some(Modal::Filter {
             draft: self.query.filters.clone(),
             field: 0,
