@@ -419,13 +419,12 @@ def mouse_case(base, binary, audit, remote):
         # The wide Detail pane is itself a pointer surface. Clicking its
         # title activates the pane; j must scroll Detail rather than move the
         # graph selection.
-        session.mouse_text_click(
-            'detail-activate', selected,
-            lambda text: text.count(selected) >= 2,
-            occurrence=1,
-        )
+        detail_col, detail_row = session.cell(selected)
+        assert detail_col > session.screen.columns * .65, 'Must click the Detail title'
+        session.mouse_click('detail-activate', detail_col, detail_row,
+                            lambda text: selected_id in text)
         session.key('detail-scroll', b'j',
-                    lambda text: text.count(selected) == 1)
+                    lambda text: selected_id in text and text.count(selected) == 1)
         session.mouse_text_click(
             'wide-back', '[Back]',
             lambda text: 'Current Graph' in text and selected in text,
