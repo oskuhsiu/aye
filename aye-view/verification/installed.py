@@ -311,6 +311,8 @@ sys.exit(status)
         restoration = json.loads(self.restoration.read_text())
         assert self.before == restoration['before'] == restoration['after'], restoration
         mouse_capture = verify_mouse_capture(bytes(self.raw))
+        if expected == 0:
+            assert mouse_capture, 'Successful interactive session never enabled mouse capture'
         assert not self.audit.exists(), self.audit.read_text() if self.audit.exists() else ''
         assert not self.trace.exists() or not self.trace.read_text().strip()
         return {'timings_seconds': self.timings, 'frames': self.frames,
@@ -396,36 +398,51 @@ def mouse_case(base, binary, audit, remote):
     repo, linked = fixture(base, 'mouse', remote)
     titles = ['MouseGraphA', 'MouseB中文', 'MouseCompactC']
     titles.extend(f'MouseList{i:02}中' for i in range(36))
+    task_ids = {}
     for title in titles:
-        aye(repo, 'create', title)
+        task_ids[title] = aye(repo, 'create', title)['task']['id']
     before = snapshot(repo, linked)
     selected = 'MouseB中文'
-    list_target = 'MouseList27中'
+    selected_id = task_ids[selected]
+    compact_title = 'MouseCompactC'
+    compact_id = task_ids[compact_title]
+    list_target = 'MouseList26中'
+    list_target_id = task_ids[list_target]
+    list_selected = 'MouseList27中'
     with Session(linked / 'nested', base / 'mouse-pty', binary, audit,
                  cols=130, rows=30) as session:
         session.wait('startup', contains('Current Graph'), session.started)
         session.mouse_text_click(
             'graph-unicode', selected,
-            lambda text: text.count(selected) >= 2 and 'Detail' in text,
+            lambda text: text.count(selected) >= 2 and selected_id in text,
         )
         # The wide Detail pane is itself a pointer surface. Clicking its
-        # explicit Back control proves that the pane accepted the pointer.
+        # title activates the pane; j must scroll Detail rather than move the
+        # graph selection.
         session.mouse_text_click(
             'detail-activate', selected,
             lambda text: text.count(selected) >= 2,
             occurrence=1,
         )
+        session.key('detail-scroll', b'j',
+                    lambda text: text.count(selected) == 1)
         session.mouse_text_click(
             'wide-back', '[Back]',
             lambda text: 'Current Graph' in text and selected in text,
         )
+        # After Back, keyboard navigation must be handled by Main. Move to
+        # the next task and back so the following narrow cases retain B.
+        session.key('main-down', b'\x1b[B',
+                    lambda text: compact_id in text and compact_title in text)
+        session.key('main-up', b'\x1b[A',
+                    lambda text: selected_id in text and selected in text)
 
         session.resize(70, 24)
         session.wait('narrow-main',
                      lambda text: '[Details]' in text and selected in text)
         session.mouse_text_click(
             'narrow-details', '[Details]',
-            lambda text: '[Back]' in text and selected in text,
+            lambda text: '[Back]' in text and selected_id in text,
         )
         session.mouse_text_click(
             'narrow-back', '[Back]',
@@ -434,41 +451,41 @@ def mouse_case(base, binary, audit, remote):
 
         session.key('compact', b'-', contains('Compact'))
         session.mouse_text_click(
-            'compact-unicode', 'MouseCompactC',
-            contains('MouseCompactC'),
+            'compact-unicode', compact_title,
+            contains(compact_title),
         )
         session.key('standard', b'+', contains('Standard'))
 
         session.resize(130, 30)
         session.wait('wide-selection',
-                     lambda text: text.count('MouseCompactC') >= 2)
+                     lambda text: compact_id in text and text.count(compact_title) >= 2)
         session.key('wide-list', b'\t', contains('aye-view · List'))
         session.key(
             'list-offset', b'\x1b[B' * 28,
-            lambda text: list_target in text,
+            lambda text: list_selected in text,
         )
         session.mouse_text_click(
             'list-unicode-row', list_target,
-            lambda text: text.count(list_target) >= 2,
+            lambda text: list_target_id in text and text.count(list_target) >= 2,
         )
 
         # Search, Filter and Help are topmost modal surfaces. Clicking their
         # background must not select a row underneath them.
         session.key('search-overlay', b'/', contains('Search · all tasks'))
-        session.mouse_click('search-background', 0, 0,
+        session.mouse_click('search-background', 4, 4,
                             lambda text: 'Search · all tasks' in text)
         session.key('search-close', b'\x1b',
-                    lambda text: 'List' in text and list_target in text)
+                    lambda text: 'List' in text and list_target_id in text)
         session.key('filter-overlay', b'f', contains('Filter · five'))
-        session.mouse_click('filter-background', 0, 0,
+        session.mouse_click('filter-background', 4, 4,
                             lambda text: 'Filter · five' in text)
         session.key('filter-close', b'\x1b',
-                    lambda text: 'List' in text and list_target in text)
+                    lambda text: 'List' in text and list_target_id in text)
         session.key('help-overlay', b'?', contains('Help · j/k'))
-        session.mouse_click('help-background', 0, 0,
+        session.mouse_click('help-background', 4, 4,
                             lambda text: 'Help · j/k' in text)
         session.key('help-close', b'\x1b',
-                    lambda text: 'List' in text and list_target in text)
+                    lambda text: 'List' in text and list_target_id in text)
 
         session.resize(20, 6)
         session.read(.4)
@@ -479,6 +496,7 @@ def mouse_case(base, binary, audit, remote):
         session.wait('restore-wide', contains('List'))
         unchanged(before, repo, linked)
         report = session.finish()
+        assert report['mouse_capture_verified'] is True
     unchanged(before, repo, linked)
     report.update(readonly=True, unicode_cell_click=True,
                   graph_densities=['Standard', 'Compact'],
