@@ -90,6 +90,15 @@ pub(crate) fn row_start(
     offset.min(len.saturating_sub(rows))
 }
 impl App {
+    pub(crate) fn consume_rendered_selection(&mut self) {
+        if self
+            .selected_id
+            .as_ref()
+            .is_none_or(|id| self.pointer_hits.contains_task(id))
+        {
+            self.reveal_selection = false;
+        }
+    }
     pub(crate) fn retain_visible_selection(&mut self) {
         self.reveal_selection |= self
             .selected_id
@@ -218,7 +227,12 @@ impl App {
         } else {
             3
         };
-        self.reveal_selection = false;
+        if matches!(
+            surface,
+            Surface::Graph | Surface::List | Surface::Recent | Surface::History
+        ) {
+            self.reveal_selection = false;
+        }
         let changed = match surface {
             Surface::Graph => {
                 if horizontal {

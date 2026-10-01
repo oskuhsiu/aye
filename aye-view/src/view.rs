@@ -117,7 +117,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     if app.query.modal.is_some() {
         app.pointer_hits.clear();
     }
-    app.reveal_selection = false;
+    app.consume_rendered_selection();
 }
 fn block(title: &str, focused: bool) -> Block<'_> {
     Block::default()

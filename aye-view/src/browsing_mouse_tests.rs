@@ -644,3 +644,46 @@ fn resize_does_not_reveal_a_manually_hidden_selection_through_details_back() {
     assert_eq!(app.list_offset, offset);
     assert!(!text(&frame).contains("NODE00"));
 }
+
+#[test]
+fn resize_in_detail_retains_row_intent_through_detail_wheel_and_back() {
+    for hidden in [false, true] {
+        let mut app = closed_app(120);
+        key(&mut app, KeyCode::Char('h'));
+        for _ in 0..50 {
+            render(&mut app, 110, 16);
+            wheel(
+                &mut app,
+                MouseEventKind::ScrollDown,
+                (2, 5),
+                KeyModifiers::NONE,
+            );
+        }
+        let frame = render(&mut app, 110, 16);
+        if !hidden {
+            click(&mut app, find(&frame, "NODE120"));
+        }
+        let frame = render(&mut app, 110, 16);
+        let selected = app.selected_id.clone();
+        click(&mut app, find(&frame, "[Details]"));
+        render(&mut app, 110, 16);
+        app.handle_event(Event::Resize(50, 10));
+        render(&mut app, 50, 10);
+        wheel(
+            &mut app,
+            MouseEventKind::ScrollDown,
+            (2, 4),
+            KeyModifiers::NONE,
+        );
+        let frame = render(&mut app, 50, 10);
+        click(&mut app, find(&frame, "[Back]"));
+        let frame = render(&mut app, 50, 10);
+        assert_eq!(app.selected_id, selected);
+        assert_eq!(app.pane, Pane::Main);
+        if hidden {
+            assert!(!text(&frame).contains("NODE01"));
+        } else {
+            assert!(text(&frame).contains("> × P2 NODE120"));
+        }
+    }
+}
