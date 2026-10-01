@@ -29,3 +29,6 @@ mod zoom_tests;
 mod mouse_tests;
 
 mod pointer;
+
+#[cfg(test)]
+mod browsing_mouse_tests;

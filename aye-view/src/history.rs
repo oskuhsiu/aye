@@ -2,6 +2,7 @@
 use crate::{
     app::{App, Pane},
     model::{sanitize, status},
+    pointer::{Surface, Target, row_start},
 };
 use aye::model::State;
 use chrono::{DateTime, Duration, Utc};
@@ -34,6 +35,7 @@ fn closed_entries(state: &State) -> Vec<(DateTime<Utc>, String)> {
 
 pub struct RecentState {
     pub enabled: bool,
+    pub(crate) offset: usize,
     /// Optional fixed clock for deterministic embedding and verification.
     pub fixed_now: Option<DateTime<Utc>>,
     pub index_builds: usize,
@@ -49,6 +51,7 @@ impl Default for RecentState {
     fn default() -> Self {
         Self {
             enabled: false,
+            offset: 0,
             fixed_now: None,
             index_builds: 0,
             now: Utc::now(),
@@ -255,6 +258,25 @@ impl App {
         }
         self.move_selection(delta);
     }
+    pub(crate) fn scroll_history(&mut self, delta: isize, rows: usize) -> bool {
+        let Some(history) = &self.history else {
+            return false;
+        };
+        let previous = history.offset;
+        let loaded = history.loaded;
+        let target = previous.saturating_add_signed(delta);
+        if delta > 0
+            && target.saturating_add(rows).saturating_add(5) >= self.visible_ids.len()
+            && history.loaded < history.total
+        {
+            let history = self.history.as_mut().unwrap();
+            history.loaded = history.loaded.saturating_add(BATCH).min(history.total);
+            self.refresh_visible();
+        }
+        let history = self.history.as_mut().unwrap();
+        history.offset = target.min(self.visible_ids.len().saturating_sub(rows.max(1)));
+        history.offset != previous || history.loaded != loaded
+    }
     /// Called after query/help interception, before Graph/List controls.
     pub fn handle_history_key(&mut self, key: KeyEvent) -> bool {
         if key.code == KeyCode::Char('h') && !key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -334,18 +356,19 @@ pub fn render_history(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner = block.inner(area);
     let rows = usize::from(inner.height);
     history.page = rows.saturating_sub(1).max(1);
-    if let Some(index) = selected {
-        if index < history.offset {
-            history.offset = index;
-        } else if index >= history.offset + rows {
-            history.offset = index.saturating_sub(rows.saturating_sub(1));
-        }
-    }
-    history.offset = history.offset.min(app.visible_ids.len().saturating_sub(1));
+    history.offset = row_start(
+        history.offset,
+        selected,
+        rows,
+        app.visible_ids.len(),
+        app.reveal_selection,
+    );
     let start = history.offset;
     let end = start.saturating_add(rows).min(app.visible_ids.len());
     history.rendered_rows = end - start;
     frame.render_widget(block, area);
+    app.pointer_hits
+        .add(inner, Target::Surface(Surface::History));
     if app.visible_ids.is_empty() {
         frame.render_widget(
             Paragraph::new(if app.query.filters.active() {
@@ -361,8 +384,11 @@ pub fn render_history(frame: &mut Frame, app: &mut App, area: Rect) {
         .iter()
         .map(|id| task_row(app, id))
         .collect::<Vec<_>>();
-    let mut state =
-        ListState::default().with_selected(selected.map(|index| index.saturating_sub(start)));
+    let mut state = ListState::default().with_selected(
+        selected
+            .and_then(|index| index.checked_sub(start))
+            .filter(|index| *index < end - start),
+    );
     frame.render_stateful_widget(
         List::new(items)
             .highlight_symbol("> ")
@@ -370,10 +396,12 @@ pub fn render_history(frame: &mut Frame, app: &mut App, area: Rect) {
         inner,
         &mut state,
     );
+    app.pointer_hits
+        .rows(inner, &app.visible_ids[start + state.offset()..end]);
 }
 /// Paint a compact secondary region and return the remaining primary-pane area.
 /// Call only outside History; graph/list renderers consume graph_ids in that area.
-pub fn render_recent(frame: &mut Frame, app: &App, area: Rect) -> Rect {
+pub fn render_recent(frame: &mut Frame, app: &mut App, area: Rect) -> Rect {
     if !app.recent.enabled || app.focus_root.is_some() || area.height < 6 {
         return area;
     }
@@ -386,6 +414,8 @@ pub fn render_recent(frame: &mut Frame, app: &App, area: Rect) -> Rect {
         .borders(Borders::ALL);
     let inner = block.inner(region);
     frame.render_widget(block, region);
+    app.pointer_hits
+        .add(inner, Target::Surface(Surface::Recent));
     if ids.is_empty() {
         frame.render_widget(Paragraph::new("No additional recent closed tasks"), inner);
         return main;
@@ -395,14 +425,25 @@ pub fn render_recent(frame: &mut Frame, app: &App, area: Rect) -> Rect {
         .as_ref()
         .and_then(|selected| ids.iter().position(|id| id == selected));
     let rows = usize::from(inner.height);
-    let start = selected.unwrap_or(0).saturating_sub(rows.saturating_sub(1));
+    app.recent.offset = row_start(
+        app.recent.offset,
+        selected,
+        rows,
+        ids.len(),
+        app.reveal_selection,
+    );
+    let start = app.recent.offset;
     let items = ids
         .iter()
         .skip(start)
         .take(rows)
         .map(|id| task_row(app, id))
         .collect::<Vec<_>>();
-    let mut state = ListState::default().with_selected(selected.map(|index| index - start));
+    let mut state = ListState::default().with_selected(
+        selected
+            .and_then(|index| index.checked_sub(start))
+            .filter(|index| *index < rows),
+    );
     frame.render_stateful_widget(
         List::new(items)
             .highlight_symbol("> ")
@@ -410,5 +451,6 @@ pub fn render_recent(frame: &mut Frame, app: &App, area: Rect) -> Rect {
         inner,
         &mut state,
     );
+    app.pointer_hits.rows(inner, &ids[start + state.offset()..]);
     main
 }

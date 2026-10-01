@@ -18,6 +18,8 @@ pub enum Mode {
 
 pub struct App {
     pub(crate) pointer_hits: crate::pointer::HitMap,
+    pub(crate) graph_drag: Option<crate::pointer::GraphDrag>,
+    pub(crate) reveal_selection: bool,
     pub focus_root: Option<String>,
     pub help_scroll: usize,
     pub help_max_scroll: usize,
@@ -51,6 +53,8 @@ impl App {
         let visible_ids = current_ids(&snapshot.state);
         Self {
             pointer_hits: crate::pointer::HitMap::default(),
+            graph_drag: None,
+            reveal_selection: true,
             focus_root: None,
             help_scroll: 0,
             help_max_scroll: 0,
@@ -86,7 +90,7 @@ impl App {
             || self.graph_key.1 != ids
             || self.graph_key.2 != self.density
         {
-            self.pointer_hits.clear();
+            self.invalidate_pointer();
             self.graph = Graph::with_density(&self.snapshot.state, &ids, self.density);
             self.graph_key = (self.snapshot.oid.clone(), ids, self.density);
             self.graph_anchor = None;
@@ -97,7 +101,7 @@ impl App {
         if self.density == density {
             return;
         }
-        self.pointer_hits.clear();
+        self.invalidate_pointer();
         self.ensure_graph();
         let old = self.graph_viewport;
         let (width, height) = (i64::from(self.graph_size.0), i64::from(self.graph_size.1));
@@ -153,7 +157,7 @@ impl App {
         // Rendering must not treat the density rebuild as a new selection.
         self.graph_anchor = self.selected_id.clone();
     }
-    fn clamp_graph_viewport(&mut self) {
+    pub(crate) fn clamp_graph_viewport(&mut self) {
         self.graph_viewport.x = self
             .graph_viewport
             .x
@@ -163,6 +167,14 @@ impl App {
             .y
             .clamp(0, (self.graph.height - i64::from(self.graph_size.1)).max(0));
     }
+    pub(crate) fn pan_graph(&mut self, dx: i64, dy: i64) -> bool {
+        let previous = self.graph_viewport;
+        self.graph_viewport.x = self.graph_viewport.x.saturating_add(dx);
+        self.graph_viewport.y = self.graph_viewport.y.saturating_add(dy);
+        self.clamp_graph_viewport();
+        self.graph_anchor = self.selected_id.clone();
+        previous != self.graph_viewport
+    }
     pub fn apply_update(&mut self, update: crate::watch::Update) {
         match update {
             crate::watch::Update::Failed(error) => self.refresh_error = Some(error),
@@ -170,7 +182,7 @@ impl App {
         }
     }
     pub fn replace_snapshot(&mut self, snapshot: ReaderSnapshot) {
-        self.pointer_hits.clear();
+        self.invalidate_pointer();
         let selected = self.selected_id.clone();
         let index = selected
             .as_ref()
@@ -210,7 +222,9 @@ impl App {
         self.refresh_error = None;
     }
     pub fn select(&mut self, id: &str) {
-        self.pointer_hits.clear();
+        self.invalidate_pointer();
+        self.reveal_selection = true;
+        self.graph_anchor = None;
         if self
             .query
             .revealed_id
@@ -245,7 +259,7 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
-        self.pointer_hits.clear();
+        self.invalidate_pointer();
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             self.quit = true;
             return;
@@ -318,6 +332,7 @@ impl App {
                     Mode::Graph
                 };
                 self.pane = Pane::Main;
+                self.reveal_selection = true;
             }
             KeyCode::PageDown if self.pane == Pane::Detail => {
                 self.detail_scroll = self

@@ -12,7 +12,7 @@ use crossterm::event::{
 };
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, text::Span};
 
-fn app(count: usize, chain: bool) -> App {
+pub(super) fn app(count: usize, chain: bool) -> App {
     let mut state = State::empty();
     for n in 0..count {
         let mut task = Task::new(format!("NODE{n:02} 中文 👩‍💻"), "2026-10-01T00:00:00.000Z");
@@ -28,12 +28,12 @@ fn app(count: usize, chain: bool) -> App {
         state,
     })
 }
-fn render(app: &mut App, width: u16, height: u16) -> Buffer {
+pub(super) fn render(app: &mut App, width: u16, height: u16) -> Buffer {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
     terminal.draw(|f| view::render(f, app)).unwrap();
     terminal.backend().buffer().clone()
 }
-fn text(buffer: &Buffer) -> String {
+pub(super) fn text(buffer: &Buffer) -> String {
     (0..buffer.area.height)
         .map(|y| {
             let mut line = String::new();
@@ -48,7 +48,7 @@ fn text(buffer: &Buffer) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
-fn find(buffer: &Buffer, needle: &str) -> (u16, u16) {
+pub(super) fn find(buffer: &Buffer, needle: &str) -> (u16, u16) {
     for (y, row) in text(buffer).lines().enumerate() {
         if let Some(start) = row.find(needle) {
             return (Span::raw(&row[..start]).width() as u16, y as u16);
@@ -56,7 +56,7 @@ fn find(buffer: &Buffer, needle: &str) -> (u16, u16) {
     }
     panic!("{needle:?} not displayed\n{}", text(buffer));
 }
-fn mouse(app: &mut App, kind: MouseEventKind, (column, row): (u16, u16)) {
+pub(super) fn mouse(app: &mut App, kind: MouseEventKind, (column, row): (u16, u16)) {
     app.handle_mouse(MouseEvent {
         kind,
         column,
@@ -64,11 +64,11 @@ fn mouse(app: &mut App, kind: MouseEventKind, (column, row): (u16, u16)) {
         modifiers: KeyModifiers::NONE,
     });
 }
-fn click(app: &mut App, point: (u16, u16)) {
+pub(super) fn click(app: &mut App, point: (u16, u16)) {
     mouse(app, MouseEventKind::Down(MouseButton::Left), point);
     mouse(app, MouseEventKind::Up(MouseButton::Left), point);
 }
-fn key(app: &mut App, code: KeyCode) {
+pub(super) fn key(app: &mut App, code: KeyCode) {
     app.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
 }
 

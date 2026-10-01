@@ -116,7 +116,7 @@ impl App {
     /// Recompute presentation after filters or canonical snapshot replacement.
     /// Preserve selection when possible, otherwise choose its previous list neighbor.
     pub fn refresh_visible(&mut self) {
-        self.pointer_hits.clear();
+        self.invalidate_pointer();
         let previous = self.selected_id.clone();
         let previous_index = previous
             .as_ref()
@@ -164,6 +164,7 @@ impl App {
                 .cloned()
         });
         if self.selected_id != previous {
+            self.reveal_selection = true;
             self.detail_scroll = 0;
         }
         self.visible_ids = ids;
@@ -175,13 +176,13 @@ impl App {
         }
     }
     pub fn open_search(&mut self) {
-        self.pointer_hits.clear();
+        self.invalidate_pointer();
         let mut search = Search::default();
         search.refresh(&self.snapshot.state);
         self.query.modal = Some(Modal::Search(search));
     }
     pub fn open_filters(&mut self) {
-        self.pointer_hits.clear();
+        self.invalidate_pointer();
         self.query.modal = Some(Modal::Filter {
             draft: self.query.filters.clone(),
             field: 0,
@@ -256,6 +257,7 @@ impl App {
                 }
                 KeyCode::Char('c') => *draft = Filters::default(),
                 KeyCode::Enter => {
+                    self.reveal_selection = true;
                     self.query.filters = draft.clone();
                     self.query.revealed_id = None;
                     self.refresh_visible();

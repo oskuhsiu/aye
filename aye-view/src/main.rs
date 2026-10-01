@@ -1,7 +1,7 @@
 use aye::{error::Error, reader::Reader};
 use aye_view::{app::App, model::sanitize, view, watch::Watcher};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture},
+    event::{self, DisableFocusChange, DisableMouseCapture, EnableFocusChange, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -22,6 +22,7 @@ fn restore_terminal(mut output: impl io::Write) -> io::Result<()> {
     execute!(
         output,
         DisableMouseCapture,
+        DisableFocusChange,
         LeaveAlternateScreen,
         crossterm::cursor::Show
     )
@@ -38,7 +39,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     enable_raw_mode()?;
     let _guard = TerminalGuard;
-    execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableFocusChange
+    )?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
     let mut redraw = true;
@@ -100,6 +106,7 @@ mod tests {
         for mode in [1000, 1002, 1003, 1006, 1015] {
             assert!(output.contains(&format!("\x1b[?{mode}l")), "{output:?}");
         }
+        assert!(output.contains("\x1b[?1004l"));
         assert!(output.contains("\x1b[?1049l"));
         assert!(output.contains("\x1b[?25h"));
     }

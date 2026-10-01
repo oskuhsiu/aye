@@ -104,13 +104,10 @@ impl App {
                 KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
             )
         {
-            self.graph_viewport.x = (self.graph_viewport.x + direction.0 * 8)
-                .clamp(0, (self.graph.width - i64::from(self.graph_size.0)).max(0));
-            self.graph_viewport.y = (self.graph_viewport.y + direction.1 * 4)
-                .clamp(0, (self.graph.height - i64::from(self.graph_size.1)).max(0));
-            self.graph_anchor = self.selected_id.clone();
+            self.pan_graph(direction.0 * 8, direction.1 * 4);
             return true;
         }
+        self.graph_anchor = None;
         let Some(selected) = self
             .selected_id
             .as_ref()

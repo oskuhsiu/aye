@@ -105,12 +105,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         );
     }
     if app.help {
+        app.pointer_hits.clear();
         render_help(frame, app);
     }
     crate::query::render(frame, app);
-    if app.help || app.query.modal.is_some() {
+    if app.query.modal.is_some() {
         app.pointer_hits.clear();
     }
+    app.reveal_selection = false;
 }
 fn block(title: &str, focused: bool) -> Block<'_> {
     Block::default()
@@ -125,7 +127,11 @@ fn block(title: &str, focused: bool) -> Block<'_> {
 fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
     if app.history.is_some() {
         crate::history::render_history(frame, app, area);
+        navigation_control(frame, app, area, Target::Details);
         return;
+    }
+    if app.mode == Mode::Graph {
+        app.ensure_graph();
     }
     let area = crate::history::render_recent(frame, app, area);
     if app.mode == Mode::List {
@@ -133,7 +139,6 @@ fn render_main(frame: &mut Frame, app: &mut App, area: Rect) {
         navigation_control(frame, app, area, Target::Details);
         return;
     }
-    app.ensure_graph();
     let title = if let Some(root) = &app.focus_root {
         format!(
             "Focus · {} · g/Esc Current",
@@ -218,44 +223,46 @@ fn render_list(frame: &mut Frame, app: &mut App, area: Rect) {
         );
         return;
     }
-    let items = ids
-        .iter()
-        .map(|id| {
-            let t = &app.snapshot.state.tasks[id];
-            let (symbol, label) = status(&app.snapshot.state, t);
-            let title = sanitize(&t.title).replace('\n', " ");
-            ListItem::new(format!("{symbol} {} {title} [{label}]", t.priority)).style(
-                graph::task_style(&app.snapshot.state, t, graph::colors_enabled()),
-            )
-        })
-        .collect::<Vec<_>>();
     let selected = app
         .selected_id
         .as_ref()
         .and_then(|id| ids.iter().position(|v| v == id));
-    let mut state = ListState::default()
-        .with_offset(app.list_offset)
-        .with_selected(selected);
+    let start = crate::pointer::row_start(
+        app.list_offset,
+        selected,
+        usize::from(inner.height),
+        ids.len(),
+        app.reveal_selection,
+    );
+    let end = start
+        .saturating_add(usize::from(inner.height))
+        .min(ids.len());
+    let items = ids[start..end]
+        .iter()
+        .map(|id| {
+            let task = &app.snapshot.state.tasks[id];
+            let (symbol, label) = status(&app.snapshot.state, task);
+            let title = sanitize(&task.title).replace('\n', " ");
+            ListItem::new(format!("{symbol} {} {title} [{label}]", task.priority)).style(
+                graph::task_style(&app.snapshot.state, task, graph::colors_enabled()),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut state = ListState::default().with_selected(
+        selected
+            .and_then(|index| index.checked_sub(start))
+            .filter(|index| *index < items.len()),
+    );
+    frame.render_widget(block, area);
     frame.render_stateful_widget(
         List::new(items)
-            .block(block)
             .highlight_symbol("> ")
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
-        area,
+        inner,
         &mut state,
     );
-    app.list_offset = state.offset();
-    for (row, id) in ids
-        .iter()
-        .skip(state.offset())
-        .take(usize::from(inner.height))
-        .enumerate()
-    {
-        app.pointer_hits.add(
-            Rect::new(inner.x, inner.y + row as u16, inner.width, 1),
-            Target::Task(id.clone()),
-        );
-    }
+    app.list_offset = start + state.offset();
+    app.pointer_hits.rows(inner, &ids[app.list_offset..end]);
 }
 fn relation_lines(app: &App, ids: &[String]) -> String {
     if ids.is_empty() {
@@ -467,7 +474,8 @@ fn render_help(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Clear, area);
     let block = block("Help · j/k PgUp/Dn Scroll · Esc Back", true);
     let inner = block.inner(area);
-    let text = "Mouse: click a task; click a pane to activate it\n[Details] opens selected task; [Back] returns\nMouse reporting needs terminal support/settings.\nCopy: use your terminal reporting override\n(iTerm2: hold Option). Keyboard keys still work.\n\nGraph: Left / Ctrl-h = prerequisite\nGraph: Right / l = dependent\nGraph: Up/Down or k/j = same layer\nShift-arrows: pan without changing selection\nGraph Main: - Compact; +/= Standard; 0 reset\nZoom preserves selection and viewport context.\nEnter: Detail; Esc: return to main pane\nF: focus selected ancestors and descendants\ng: full Current Graph; Esc leaves focused Main\nFocus clears filters; later filters intersect.\nTab: Graph/List (History: pane switch)\nDetail: j/k or arrows scroll; PgUp/PgDown page\n?: Help; q / Ctrl-c: Quit\n\nr: Refresh local state (poll every 500 ms)\n/ Search all tasks; arrows select; Enter reveal\nSearch outside Focus exits that focus.\nf Filters: up/down field, left/right cycle\nc clears filter draft; Enter applies; Esc cancels\nc: Recent 24h; ]: next unrelated recent task\nRecent is hidden during Focus.\nh: all closed History; Esc returns\nHistory arrows/PgUp/PgDown load more rows.\n\n● ready    ▶ in progress    ! blocked\n⏸ deferred    ✓ done    × cancelled\nCancelled prerequisites do not unlock tasks.\n\nB → A means A depends on B.\nB completion unlocks A.\nParent/discovery are detail context only.\n╳: lines cross without joining.\n\nCurrent Graph includes closed prerequisites.\nFocus root stays fixed as selection moves.";
+    app.pointer_hits.add(inner, Target::Surface(Surface::Help));
+    let text = "Mouse: click Graph/List/Recent/History tasks\nClick a pane to activate keyboard controls\nWheel: scroll the pointed surface, keep selection\nGraph: horizontal or Shift-wheel pans sideways\nGraph background: left drag pans like a map\nDrag ends on release; navigation/resize cancels\n[Details] opens selected task; [Back] returns\nMouse reporting needs terminal support/settings.\nCopy: use your terminal reporting override\n(iTerm2: hold Option). Keyboard keys still work.\n\nGraph: Left / Ctrl-h = prerequisite\nGraph: Right / l = dependent\nGraph: Up/Down or k/j = same layer\nShift-arrows: pan without changing selection\nGraph Main: - Compact; +/= Standard; 0 reset\nZoom preserves selection and viewport context.\nEnter: Detail; Esc: return to main pane\nF: focus selected ancestors and descendants\ng: full Current Graph; Esc leaves focused Main\nFocus clears filters; later filters intersect.\nTab: Graph/List (History: pane switch)\nDetail: j/k or arrows scroll; PgUp/PgDown page\n?: Help; q / Ctrl-c: Quit\n\nr: Refresh local state (poll every 500 ms)\n/ Search all tasks; arrows select; Enter reveal\nSearch outside Focus exits that focus.\nf Filters: up/down field, left/right cycle\nc clears filter draft; Enter applies; Esc cancels\nc: Recent 24h; ]: next unrelated recent task\nRecent is hidden during Focus.\nh: all closed History; Esc returns\nHistory arrows/PgUp/PgDown load more rows.\n\n● ready    ▶ in progress    ! blocked\n⏸ deferred    ✓ done    × cancelled\nCancelled prerequisites do not unlock tasks.\n\nB → A means A depends on B.\nB completion unlocks A.\nParent/discovery are detail context only.\n╳: lines cross without joining.\n\nCurrent Graph includes closed prerequisites.\nFocus root stays fixed as selection moves.";
     let lines = wrapped_lines(text, usize::from(inner.width));
     app.help_page = usize::from(inner.height).saturating_sub(1).max(1);
     app.help_max_scroll = lines.len().saturating_sub(usize::from(inner.height));

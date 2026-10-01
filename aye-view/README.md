@@ -72,11 +72,29 @@ details, including wrapped Unicode text. Esc returns to the main pane.
 ## Mouse browsing
 
 In a terminal with mouse reporting enabled, single-click a visible Current
-Graph node or List row to select it. Clicking a pane activates its keyboard
+Graph node or List, Recent or History row to select it. Clicking a pane activates its keyboard
 controls; clicking empty Main keeps the selected task. The compact `[Details]`
 and `[Back]` controls work in wide and narrow layouts. Pane borders are inert
 except for those controls. Search, Filter and Help isolate background clicks.
-Mouse selection works at Standard and Compact graph density.
+Mouse selection works at Standard and Compact graph density. Open Recent with
+`c` or History with `h`; clicking their rows keeps that browsing context.
+
+The wheel scrolls the surface under the pointer, retaining selection and keyboard
+focus: List, Recent, History, Detail and Help scroll vertically; Graph pans.
+Each event moves three rows or cells, clamped to content bounds. History exposes
+more batches as you scroll, including its final matching task. List, Recent and
+History keep independent viewports; deliberate keyboard selection reveals its
+row again. Reported horizontal wheel and Shift-wheel events pan Graph sideways;
+horizontal input is ignored on vertical-only surfaces. Search and Filter keep
+keyboard controls and consume pointer input.
+
+Press the left button on Graph background (including dependency lines) and drag
+to move the map in either axis. Task selection stays stable; a node press selects
+instead of starting a pan. The gesture stays with Graph when crossing another
+pane and ends on a reported release anywhere. A new press, keyboard navigation,
+wheel input, resize, reload, density/scope/mode change or reported focus loss
+cancels it. Terminals may lose releases outside their window; Escape cancels a
+stale gesture. Dragging text/list content and scrollbars is deferred.
 
 Mouse reporting can take over terminal text selection. Use your terminal's
 reporting override when copying; in iTerm2, hold Option to temporarily disable
