@@ -586,3 +586,61 @@ fn tiny_and_empty_pointer_scrolling_and_gestures_are_safe() {
         }
     }
 }
+
+#[test]
+fn resize_preserves_visible_final_history_selection_through_details_back() {
+    for reported in [false, true] {
+        let mut app = closed_app(120);
+        key(&mut app, KeyCode::Char('h'));
+        for _ in 0..50 {
+            render(&mut app, 110, 16);
+            wheel(
+                &mut app,
+                MouseEventKind::ScrollDown,
+                (2, 5),
+                KeyModifiers::NONE,
+            );
+        }
+        let frame = render(&mut app, 110, 16);
+        click(&mut app, find(&frame, "NODE120"));
+        render(&mut app, 110, 16);
+        if reported {
+            app.handle_event(Event::Resize(50, 10));
+        }
+        let frame = render(&mut app, 50, 10);
+        assert!(text(&frame).contains("> × P2 NODE120"));
+        click(&mut app, find(&frame, "[Details]"));
+        let frame = render(&mut app, 50, 10);
+        assert!(text(&frame).contains("t-00000000000000000078"));
+        click(&mut app, find(&frame, "[Back]"));
+        assert!(text(&render(&mut app, 50, 10)).contains("> × P2 NODE120"));
+    }
+}
+
+#[test]
+fn resize_does_not_reveal_a_manually_hidden_selection_through_details_back() {
+    let mut app = app(60, false);
+    key(&mut app, KeyCode::Tab);
+    for _ in 0..20 {
+        render(&mut app, 110, 16);
+        wheel(
+            &mut app,
+            MouseEventKind::ScrollDown,
+            (2, 5),
+            KeyModifiers::NONE,
+        );
+    }
+    render(&mut app, 110, 16);
+    let offset = app.list_offset;
+    app.handle_event(Event::Resize(50, 10));
+    let frame = render(&mut app, 50, 10);
+    assert_eq!(app.list_offset, offset);
+    assert!(!text(&frame).contains("NODE00"));
+    click(&mut app, find(&frame, "[Details]"));
+    let frame = render(&mut app, 50, 10);
+    assert!(text(&frame).contains("t-00000000000000000000"));
+    click(&mut app, find(&frame, "[Back]"));
+    let frame = render(&mut app, 50, 10);
+    assert_eq!(app.list_offset, offset);
+    assert!(!text(&frame).contains("NODE00"));
+}

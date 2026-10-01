@@ -84,7 +84,9 @@ focus: List, Recent, History, Detail and Help scroll vertically; Graph pans.
 Each event moves three rows or cells, clamped to content bounds. History exposes
 more batches as you scroll, including its final matching task. List, Recent and
 History keep independent viewports; deliberate keyboard selection reveals its
-row again. Reported horizontal wheel and Shift-wheel events pan Graph sideways;
+row again. Resizing keeps a previously visible selected row onscreen, while a
+selection already hidden by manual scrolling keeps its independent viewport.
+Reported horizontal wheel and Shift-wheel events pan Graph sideways;
 horizontal input is ignored on vertical-only surfaces. Search and Filter keep
 keyboard controls and consume pointer input.
 

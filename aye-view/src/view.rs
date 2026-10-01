@@ -13,6 +13,11 @@ use ratatui::{
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
+    if app.rendered_area.is_some_and(|area| area != frame.area()) {
+        app.retain_visible_selection();
+        app.invalidate_pointer();
+    }
+    app.rendered_area = Some(frame.area());
     app.tick_clock();
     app.pointer_hits.clear();
     let chunks = Layout::default()

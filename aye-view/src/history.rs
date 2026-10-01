@@ -417,6 +417,7 @@ pub fn render_recent(frame: &mut Frame, app: &mut App, area: Rect) -> Rect {
     app.pointer_hits
         .add(inner, Target::Surface(Surface::Recent));
     if ids.is_empty() {
+        app.recent.offset = 0;
         frame.render_widget(Paragraph::new("No additional recent closed tasks"), inner);
         return main;
     }

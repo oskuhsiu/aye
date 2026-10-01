@@ -6,7 +6,9 @@ Details/Back support narrow layouts. Search and Filter isolate pointer input.
 
 Wheel input uses fixed three-row/cell steps on the pointed surface, retaining
 selection and keyboard focus. Lists have independent offsets; explicit keyboard
-selection reveals its row. History wheel exposure continues beyond the initial
+selection reveals its row. Resize retains selection visibility only when the
+prior frame showed that row; manually hidden selection keeps its viewport.
+History wheel exposure continues beyond the initial
 50 rows to the last matching closed task. Horizontal or reported Shift-wheel
 pans Graph; vertical-only surfaces ignore horizontal events.
 

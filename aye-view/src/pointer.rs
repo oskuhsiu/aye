@@ -41,6 +41,11 @@ impl HitMap {
             );
         }
     }
+    fn contains_task(&self, id: &str) -> bool {
+        self.0
+            .iter()
+            .any(|(_, target)| matches!(target,Target::Task(task) if task==id))
+    }
     fn at(&self, column: u16, row: u16) -> Option<(Target, Rect)> {
         self.0
             .iter()
@@ -85,6 +90,12 @@ pub(crate) fn row_start(
     offset.min(len.saturating_sub(rows))
 }
 impl App {
+    pub(crate) fn retain_visible_selection(&mut self) {
+        self.reveal_selection |= self
+            .selected_id
+            .as_ref()
+            .is_some_and(|id| self.pointer_hits.contains_task(id));
+    }
     pub(crate) fn invalidate_pointer(&mut self) {
         self.pointer_hits.clear();
         self.graph_drag = None;
@@ -100,7 +111,12 @@ impl App {
                 true
             }
             Event::Mouse(mouse) => self.handle_mouse(mouse),
-            Event::Resize(_, _) | Event::FocusLost => {
+            Event::Resize(_, _) => {
+                self.retain_visible_selection();
+                self.invalidate_pointer();
+                true
+            }
+            Event::FocusLost => {
                 self.invalidate_pointer();
                 true
             }
