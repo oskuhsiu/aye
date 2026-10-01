@@ -30,6 +30,11 @@ GIT = shutil.which('git')
 AYE = shutil.which('aye')
 STATE = 'refs/agent-tasks/state'
 
+MOUSE_ENABLE = (b'\x1b[?1000h', b'\x1b[?1002h', b'\x1b[?1003h',
+                b'\x1b[?1015h', b'\x1b[?1006h')
+MOUSE_DISABLE = (b'\x1b[?1006l', b'\x1b[?1015l', b'\x1b[?1003l',
+                 b'\x1b[?1002l', b'\x1b[?1000l')
+
 
 def run(cwd, *args, input=None, env=None):
     return subprocess.run(args, cwd=cwd, input=input, text=True, check=True,
@@ -65,6 +70,27 @@ def unchanged(before, *roots):
 
 def stamp(value):
     return value.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
+def sgr_mouse(button, col, row, release=False):
+    """Encode a 0-based terminal cell as one SGR mouse event."""
+    assert button >= 0 and col >= 0 and row >= 0
+    suffix = 'm' if release else 'M'
+    return f'\x1b[<{button};{col + 1};{row + 1}{suffix}'.encode()
+
+
+def verify_mouse_capture(raw):
+    """Require cleanup only when the viewer reached mouse-capture setup."""
+    enabled = [raw.find(sequence) for sequence in MOUSE_ENABLE]
+    if all(position < 0 for position in enabled):
+        # Startup failures can happen before terminal setup. They must still
+        # restore termios, but cannot emit a disable sequence they never need.
+        return False
+    assert all(position >= 0 for position in enabled), raw
+    disabled = [raw.find(sequence) for sequence in MOUSE_DISABLE]
+    assert all(position >= 0 for position in disabled), raw
+    assert max(enabled) < min(disabled), raw
+    return True
 
 
 def task_id(n):
@@ -245,6 +271,35 @@ sys.exit(status)
         os.write(self.master, keys)
         return self.wait(name, predicate, start)
 
+    def cell(self, value, occurrence=0):
+        """Find a displayed string and return its exact 0-based cell."""
+        assert value
+        matches = []
+        for row, line in enumerate(self.screen.display):
+            offset = 0
+            while True:
+                offset = line.find(value, offset)
+                if offset < 0:
+                    break
+                col = wcswidth(line[:offset])
+                width = wcswidth(value)
+                if col >= 0 and width > 0 and col + width <= self.screen.columns:
+                    matches.append((col, row))
+                offset += max(1, len(value))
+        assert matches, (value, self.text())
+        return matches[occurrence]
+
+    def mouse_click(self, name, col, row, predicate, button=0):
+        """Send a press/release click using 0-based cells."""
+        start = time.monotonic()
+        os.write(self.master, sgr_mouse(button, col, row) +
+                 sgr_mouse(button, col, row, release=True))
+        return self.wait(name, predicate, start)
+
+    def mouse_text_click(self, name, value, predicate, occurrence=0, button=0):
+        col, row = self.cell(value, occurrence)
+        return self.mouse_click(name, col, row, predicate, button)
+
     def finish(self, keys=b'q', expected=0):
         if self.proc.poll() is None and keys:
             os.write(self.master, keys)
@@ -255,10 +310,12 @@ sys.exit(status)
         self.read(.02)
         restoration = json.loads(self.restoration.read_text())
         assert self.before == restoration['before'] == restoration['after'], restoration
+        mouse_capture = verify_mouse_capture(bytes(self.raw))
         assert not self.audit.exists(), self.audit.read_text() if self.audit.exists() else ''
         assert not self.trace.exists() or not self.trace.read_text().strip()
         return {'timings_seconds': self.timings, 'frames': self.frames,
-                'terminal_restored': True, 'git_subprocess_calls': 0}
+                'terminal_restored': True, 'mouse_capture_verified': mouse_capture,
+                'git_subprocess_calls': 0}
 
     def __enter__(self):
         return self
@@ -331,6 +388,102 @@ def scale_case(base, binary, audit, remote):
     report.update(total=10_000, active=1_000, ready=100, current_with_ancestors=1_010,
                   edges=910, closed=9_000, readonly=True, stale_views_preserved=True,
                   explicit_writer_seconds=writer_seconds)
+    return report
+
+
+def mouse_case(base, binary, audit, remote):
+    """Exercise installed SGR clicks against the last rendered hit map."""
+    repo, linked = fixture(base, 'mouse', remote)
+    titles = ['MouseGraphA', 'MouseB中文', 'MouseCompactC']
+    titles.extend(f'MouseList{i:02}中' for i in range(36))
+    for title in titles:
+        aye(repo, 'create', title)
+    before = snapshot(repo, linked)
+    selected = 'MouseB中文'
+    list_target = 'MouseList27中'
+    with Session(linked / 'nested', base / 'mouse-pty', binary, audit,
+                 cols=130, rows=30) as session:
+        session.wait('startup', contains('Current Graph'), session.started)
+        session.mouse_text_click(
+            'graph-unicode', selected,
+            lambda text: text.count(selected) >= 2 and 'Detail' in text,
+        )
+        # The wide Detail pane is itself a pointer surface. Clicking its
+        # explicit Back control proves that the pane accepted the pointer.
+        session.mouse_text_click(
+            'detail-activate', selected,
+            lambda text: text.count(selected) >= 2,
+            occurrence=1,
+        )
+        session.mouse_text_click(
+            'wide-back', '[Back]',
+            lambda text: 'Current Graph' in text and selected in text,
+        )
+
+        session.resize(70, 24)
+        session.wait('narrow-main',
+                     lambda text: '[Details]' in text and selected in text)
+        session.mouse_text_click(
+            'narrow-details', '[Details]',
+            lambda text: '[Back]' in text and selected in text,
+        )
+        session.mouse_text_click(
+            'narrow-back', '[Back]',
+            lambda text: '[Details]' in text and selected in text,
+        )
+
+        session.key('compact', b'-', contains('Compact'))
+        session.mouse_text_click(
+            'compact-unicode', 'MouseCompactC',
+            contains('MouseCompactC'),
+        )
+        session.key('standard', b'+', contains('Standard'))
+
+        session.resize(130, 30)
+        session.wait('wide-selection',
+                     lambda text: text.count('MouseCompactC') >= 2)
+        session.key('wide-list', b'\t', contains('aye-view · List'))
+        session.key(
+            'list-offset', b'\x1b[B' * 28,
+            lambda text: list_target in text,
+        )
+        session.mouse_text_click(
+            'list-unicode-row', list_target,
+            lambda text: text.count(list_target) >= 2,
+        )
+
+        # Search, Filter and Help are topmost modal surfaces. Clicking their
+        # background must not select a row underneath them.
+        session.key('search-overlay', b'/', contains('Search · all tasks'))
+        session.mouse_click('search-background', 0, 0,
+                            lambda text: 'Search · all tasks' in text)
+        session.key('search-close', b'\x1b',
+                    lambda text: 'List' in text and list_target in text)
+        session.key('filter-overlay', b'f', contains('Filter · five'))
+        session.mouse_click('filter-background', 0, 0,
+                            lambda text: 'Filter · five' in text)
+        session.key('filter-close', b'\x1b',
+                    lambda text: 'List' in text and list_target in text)
+        session.key('help-overlay', b'?', contains('Help · j/k'))
+        session.mouse_click('help-background', 0, 0,
+                            lambda text: 'Help · j/k' in text)
+        session.key('help-close', b'\x1b',
+                    lambda text: 'List' in text and list_target in text)
+
+        session.resize(20, 6)
+        session.read(.4)
+        session.mouse_click('tiny-background', 0, 0,
+                            lambda text: session.proc.poll() is None)
+        assert session.proc.poll() is None
+        session.resize(130, 30)
+        session.wait('restore-wide', contains('List'))
+        unchanged(before, repo, linked)
+        report = session.finish()
+    unchanged(before, repo, linked)
+    report.update(readonly=True, unicode_cell_click=True,
+                  graph_densities=['Standard', 'Compact'],
+                  list_offset_click=True, overlays_isolated=True,
+                  tiny_click_safe=True)
     return report
 
 
@@ -446,7 +599,8 @@ def main():
         worker.start()
         remote = f'http://127.0.0.1:{server.server_address[1]}/unavailable.git'
         try:
-            for name, case in [('scale', scale_case), ('live', live_case), ('errors', error_cases)]:
+            for name, case in [('scale', scale_case), ('mouse', mouse_case),
+                               ('live', live_case), ('errors', error_cases)]:
                 print(f'Running {name}', flush=True)
                 report[name] = case(base, binary, audit, remote)
                 print(json.dumps({name: report[name]}, indent=2), flush=True)
