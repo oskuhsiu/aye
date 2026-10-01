@@ -262,16 +262,21 @@ sys.exit(status)
                 os.write(self.master, b'\x1b[1;1R')
             self.cursor_tail = query[-3:]
 
+    def row_cells(self, y):
+        # Normalize orphan continuation cells and retain actual pyte columns.
+        # Unicode string width alone may not match emulator cells for ZWJ text.
+        row, positions, x = [], [], 0
+        while x < self.screen.columns:
+            value = self.screen.buffer[y][x].data or ' '
+            row.append(value)
+            positions.extend([x] * len(value))
+            x += max(1, wcwidth(value[0]))
+        return ''.join(row), positions
+
     def text(self):
-        # Normalize orphan empty continuation cells left by pyte after wide glyphs.
         lines = []
         for y in range(self.screen.lines):
-            row, x = [], 0
-            while x < self.screen.columns:
-                value = self.screen.buffer[y][x].data or ' '
-                row.append(value)
-                x += max(1, wcwidth(value[0]))
-            line = ''.join(row)
+            line, _ = self.row_cells(y)
             assert wcswidth(line) <= self.screen.columns, line
             lines.append(line)
         return '\n'.join(lines)
@@ -306,20 +311,18 @@ sys.exit(status)
         return self.wait(name, predicate, start)
 
     def cells(self, value):
-        """Find every occurrence of a displayed string in exact cells."""
+        """Locate displayed text using actual terminal cells, including Unicode."""
         assert value
         matches = []
-        for row, line in enumerate(self.screen.display):
+        for row in range(self.screen.lines):
+            line, positions = self.row_cells(row)
             offset = 0
             while True:
                 offset = line.find(value, offset)
                 if offset < 0:
                     break
-                col = wcswidth(line[:offset])
-                width = wcswidth(value)
-                if col >= 0 and width > 0 and col + width <= self.screen.columns:
-                    matches.append((col, row))
-                offset += max(1, len(value))
+                matches.append((positions[offset], row))
+                offset += len(value)
         return matches
 
     def cell(self, value, occurrence=0):
