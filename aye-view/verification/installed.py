@@ -861,7 +861,9 @@ def detail_copy_case(base, binary, audit, remote):
                             lambda _: session.proc.poll() is None)
         assert clipboard_payloads(session) == []
         start = pane_cell(session, '中文', 85, 130)
-        end = pane_cell(session, 'e\u0301', 85, 130)
+        # pyte composes displayed accents; clipboard assertions retain the
+        # original decomposed source bytes.
+        end = pane_cell(session, 'é', 85, 130)
         session.mouse_press('unicode-press', start[0] + 1, start[1], lambda _: True)
         session.mouse_motion('unicode-highlight', *end,
                              lambda _: session.screen.buffer[start[1]][start[0]].reverse)
