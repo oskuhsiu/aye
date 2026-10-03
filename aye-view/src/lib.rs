@@ -30,5 +30,10 @@ mod mouse_tests;
 
 mod pointer;
 
+mod detail;
+
+#[cfg(test)]
+mod detail_copy_tests;
+
 #[cfg(test)]
 mod browsing_mouse_tests;

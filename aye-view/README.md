@@ -96,11 +96,29 @@ instead of starting a pan. The gesture stays with Graph when crossing another
 pane and ends on a reported release anywhere. A new press, keyboard navigation,
 wheel input, resize, reload, density/scope/mode change or reported focus loss
 cancels it. Terminals may lose releases outside their window; Escape cancels a
-stale gesture. Dragging text/list content and scrollbars is deferred.
+stale gesture. List dragging and scrollbars are deferred.
 
-Mouse reporting can take over terminal text selection. Use your terminal's
-reporting override when copying; in iTerm2, hold Option to temporarily disable
-reporting. Check your terminal's mouse-reporting settings if clicks do not work.
+In Detail, drag with the left button to highlight text; releasing copies the
+selection automatically. Ctrl+C copies that selection again without quitting.
+A click without dragging never copies. Forward/reverse selection preserves whole
+Unicode characters and original newlines; screen wrapping adds no copied newline.
+Dragging outside Detail stays bounded to its visible text. To copy another part,
+scroll there and start a new selection. Navigation, wheel input, a new press,
+resize, reload or reported focus loss clears selection. Esc returns to Main;
+`q` always quits. Copy-on-release also works when Cmd+C is handled by the terminal
+rather than delivered to the app.
+
+Local macOS uses the system clipboard and displays `Copied selection`. SSH and
+other platforms send OSC52 and display `Copy sent to terminal`; the terminal and
+any multiplexer must permit clipboard access. Native clipboard failure falls
+back to this terminal route. RTF/PostScript-like snippets beginning with `{\rtf`
+or `%!` also use that route to preserve literal text. Output failures show
+`Copy failed` and keep the viewer usable. See the [copy contract](verification/DETAIL_COPY.md)
+for reproducible checks and evidence limits.
+
+For other panes, use your terminal's reporting override to select/copy text;
+in iTerm2, hold Option to temporarily disable reporting. Check your terminal's
+mouse-reporting settings if clicks do not work.
 Keyboard controls remain available. This release is verified using xterm SGR
 mouse input through Unix PTYs; this does not establish compatibility with every
 terminal or physical mouse/touchpad. Mouse navigation is session-only and
@@ -109,7 +127,8 @@ read-only.
 ## Keys by mode
 
 Keys are case-sensitive. Search and Filter consume keys before main-view
-shortcuts. Ctrl-c quits from every mode; `q` quits outside those two dialogs.
+shortcuts. Ctrl-c copies a nonempty Detail selection; otherwise it quits from
+every mode. `q` quits outside those two dialogs.
 
 | Main-view key | Action |
 | --- | --- |
@@ -132,13 +151,13 @@ shortcuts. Ctrl-c quits from every mode; `q` quits outside those two dialogs.
 | `h` | Open all-closed History (`h` is not left navigation) |
 | `r` | Force a local refresh, even when the state ref has not changed |
 | `?` | Open Help |
-| `q` / Ctrl-c | Quit, restoring the terminal |
+| `q` / Ctrl-c without a Detail selection | Quit, restoring the terminal |
 
 | Dialog or pane | Keys |
 | --- | --- |
 | Search | Type title/ID/label text (case-insensitive); Backspace deletes; Up/Down select a result; Enter reveals it; Esc cancels. Letters such as `j`, `q` and `f` enter text. |
 | Filter | Up/Down or Tab/Shift-Tab choose state, priority, type, label or claimant; Left/Right or Space cycle values; `c` clears the draft; Enter applies; Esc cancels. `closed(bypassed)` selects only current bypasses. |
-| Details | Up/Down or `k`/`j` scroll one line; PgUp/PgDown scroll a page; Esc returns to main. |
+| Details | Left drag selects; release copies; Ctrl+C copies again. Up/Down or `k`/`j` scroll one line; PgUp/PgDown scroll a page; Esc returns to main. |
 | History main pane | Up/Down or `k`/`j` move rows; PgUp/PgDown move a page and expose more rows near the end; Enter opens details; Tab switches panes; Esc returns to the previous view. |
 | Help | Up/Down or `k`/`j` scroll; PgUp/PgDown page; Esc or `?` closes Help. |
 

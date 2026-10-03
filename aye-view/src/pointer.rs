@@ -108,6 +108,7 @@ impl App {
     pub(crate) fn invalidate_pointer(&mut self) {
         self.pointer_hits.clear();
         self.graph_drag = None;
+        self.clear_detail_selection();
     }
     /// Returns whether the event requires a new frame. Passive motion is inert.
     pub fn handle_event(&mut self, event: Event) -> bool {
@@ -135,17 +136,35 @@ impl App {
     pub fn handle_mouse(&mut self, mouse: MouseEvent) -> bool {
         if self.query.modal.is_some() {
             self.graph_drag = None;
-            return false;
+            return self.clear_detail_selection();
+        }
+        if self.help {
+            self.clear_detail_selection();
+        }
+        let point = Position::new(mouse.column, mouse.row);
+        if self.detail.dragging() {
+            match mouse.kind {
+                MouseEventKind::Drag(MouseButton::Left) => return self.detail.drag(point),
+                MouseEventKind::Up(MouseButton::Left) => {
+                    let changed = self.detail.drag(point);
+                    self.detail.stop_drag();
+                    return self.request_detail_copy() || changed;
+                }
+                _ => {}
+            }
         }
         if self.help || self.history.is_some() || self.mode != crate::app::Mode::Graph {
             self.graph_drag = None;
         }
-        match mouse.kind {
+        let cleared = match mouse.kind {
             MouseEventKind::Up(_) => {
                 self.graph_drag = None;
                 return false;
             }
-            MouseEventKind::Down(_) => self.graph_drag = None,
+            MouseEventKind::Down(_) => {
+                self.graph_drag = None;
+                self.clear_detail_selection()
+            }
             MouseEventKind::Drag(_) => {
                 let Some(origin) = self.graph_drag else {
                     return false;
@@ -174,22 +193,27 @@ impl App {
             | MouseEventKind::ScrollLeft
             | MouseEventKind::ScrollRight => {
                 self.graph_drag = None;
-                return self.wheel(mouse);
+                let cleared = self.clear_detail_selection();
+                return self.wheel(mouse) || cleared;
             }
             _ => return false,
-        }
+        };
         if self.help || mouse.kind != MouseEventKind::Down(MouseButton::Left) {
-            return false;
+            return cleared;
         }
         let Some((target, area)) = self.pointer_hits.at(mouse.column, mouse.row) else {
-            return false;
+            return cleared;
         };
         match target {
             Target::Task(id) => {
                 self.select(&id);
                 self.pane = Pane::Main;
             }
-            Target::Surface(Surface::Detail) | Target::Details => self.pane = Pane::Detail,
+            Target::Surface(Surface::Detail) => {
+                self.pane = Pane::Detail;
+                self.detail.press(point);
+            }
+            Target::Details => self.pane = Pane::Detail,
             Target::Surface(Surface::Graph) => {
                 self.pane = Pane::Main;
                 self.graph_drag = Some(GraphDrag {

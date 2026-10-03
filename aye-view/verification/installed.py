@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Installed aye-view acceptance. Disposable repositories/evidence stay in test/."""
 import argparse
+import base64
 import copy
 from datetime import datetime, timedelta, timezone
 import fcntl
@@ -10,6 +11,7 @@ import os
 from pathlib import Path
 import platform
 import pty
+import re
 import select
 import shutil
 import signal
@@ -198,7 +200,7 @@ class TrapHandler(socketserver.BaseRequestHandler):
 
 
 class Session:
-    def __init__(self, cwd, output, binary, audit_bin, cols=190, rows=40):
+    def __init__(self, cwd, output, binary, audit_bin, cols=190, rows=40, env=None):
         self.output = output
         output.mkdir()
         self.master, self.slave = pty.openpty()
@@ -234,7 +236,8 @@ sys.exit(status)
             preexec_fn=child_setup,
             env={**os.environ, 'TERM': 'xterm-256color', 'NO_COLOR': '1',
                  'PATH': str(audit_bin) + os.pathsep + os.environ['PATH'],
-                 'VIEWER_GIT_AUDIT': str(self.audit), 'GIT_TRACE': str(self.trace)})
+                 'VIEWER_GIT_AUDIT': str(self.audit), 'GIT_TRACE': str(self.trace),
+                 **(env or {})})
 
     def resize(self, cols, rows):
         self.screen.resize(lines=rows, columns=cols)
@@ -836,6 +839,66 @@ def mouse_browsing_case(base, binary, audit, remote):
     }
 
 
+def clipboard_payloads(session):
+    return [base64.b64decode(value).decode('utf-8') for value in
+            re.findall(rb'\x1b\]52;c;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)', session.raw)]
+
+
+def detail_copy_case(base, binary, audit, remote):
+    """Exercise the real copy effect without replacing the host clipboard."""
+    repo, linked = fixture(base, 'detail-copy', remote)
+    title = 'Copy 中文 👩‍💻 e\u0301 END'
+    soft = 'SOFT-' + 'abcdefghijklmnopqrstuvwxyz' * 4 + '-TAIL'
+    task = aye(repo, 'create', title, '--description', 'ALPHA  \n\n中文 OMEGA\n' + soft)['task']
+    before = snapshot(repo, linked)
+    # SSH routes through OSC52 on every platform. Assert decoded payloads rather
+    # than requiring terminal permission or changing the host's clipboard.
+    with Session(linked, base / 'detail-copy-pty', binary, audit,
+                 cols=130, rows=45, env={'SSH_TTY': '/dev/viewer-verification'}) as session:
+        session.wait('startup', contains(task['id']), session.started)
+        point = session.cell(task['id'])
+        session.mouse_click('detail-click-only', *point,
+                            lambda _: session.proc.poll() is None)
+        assert clipboard_payloads(session) == []
+        start = pane_cell(session, '中文', 85, 130)
+        end = pane_cell(session, 'e\u0301', 85, 130)
+        session.mouse_press('unicode-press', start[0] + 1, start[1], lambda _: True)
+        session.mouse_motion('unicode-highlight', *end,
+                             lambda _: session.screen.buffer[start[1]][start[0]].reverse)
+        assert clipboard_payloads(session) == []
+        session.mouse_release('unicode-copy', *end, contains('Copy sent to terminal'))
+        assert clipboard_payloads(session) == ['中文 👩‍💻 e\u0301']
+        session.key('ctrl-c-copy-again', b'\x03',
+                    lambda _: len(clipboard_payloads(session)) == 2)
+        assert session.proc.poll() is None
+        assert clipboard_payloads(session)[-1] == '中文 👩‍💻 e\u0301'
+        session.resize(70, 45)
+        session.wait('narrow-detail', contains(soft[:30]))
+        start = session.cell('SOFT-')
+        tail = session.cell('-TAIL')
+        end = (tail[0] + 4, tail[1])
+        session.mouse_drag('soft-wrap-copy', start, end, contains('Copy sent to terminal'))
+        assert clipboard_payloads(session)[-1] == soft
+        start = session.cell('ALPHA')
+        last = session.cell('OMEGA')
+        end = (last[0] + 4, last[1])
+        session.mouse_drag('reverse-hard-lines-copy', end, start,
+                           lambda _: len(clipboard_payloads(session)) == 4)
+        assert clipboard_payloads(session)[-1] == 'ALPHA  \n\n中文 OMEGA'
+        session.mouse_press('cancel-press', *start, lambda _: True)
+        session.mouse_motion('cancel-highlight', start[0] + 3, start[1],
+                             lambda _: session.screen.buffer[start[1]][start[0]].reverse)
+        session.key('focus-loss-cancels', b'\x1b[O',
+                    lambda _: not session.screen.buffer[start[1]][start[0]].reverse)
+        session.mouse_release('canceled-release', start[0] + 4, start[1], lambda _: True)
+        session.read(.3)
+        assert len(clipboard_payloads(session)) == 4
+        report = session.finish(b'\x03')
+        report['exact_clipboard_payloads'] = clipboard_payloads(session)
+    unchanged(before, repo, linked)
+    return {**report, 'read_only': True, 'native_clipboard_modified': False}
+
+
 def replace_project(repo, base, version):
     parent = git(repo, 'rev-parse', STATE)
     project = json.loads(git(repo, 'show', parent + ':project.json'))
@@ -950,6 +1013,7 @@ def main():
         try:
             for name, case in [('scale', scale_case), ('mouse', mouse_case),
                                ('mouse-browsing', mouse_browsing_case),
+                               ('detail-copy', detail_copy_case),
                                ('live', live_case), ('errors', error_cases)]:
                 print(f'Running {name}', flush=True)
                 report[name] = case(base, binary, audit, remote)

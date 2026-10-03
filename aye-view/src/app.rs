@@ -19,6 +19,9 @@ pub enum Mode {
 pub struct App {
     pub(crate) pointer_hits: crate::pointer::HitMap,
     pub(crate) graph_drag: Option<crate::pointer::GraphDrag>,
+    pub(crate) detail: crate::detail::Detail,
+    pub clipboard_requested: Option<String>,
+    pub copy_status: Option<String>,
     pub(crate) reveal_selection: bool,
     pub(crate) rendered_area: Option<ratatui::layout::Rect>,
     pub focus_root: Option<String>,
@@ -55,6 +58,9 @@ impl App {
         Self {
             pointer_hits: crate::pointer::HitMap::default(),
             graph_drag: None,
+            detail: crate::detail::Detail::default(),
+            clipboard_requested: None,
+            copy_status: None,
             reveal_selection: true,
             rendered_area: None,
             focus_root: None,
@@ -261,9 +267,23 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
+        if matches!(key.code, KeyCode::Char('c' | 'C'))
+            && key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER)
+            && self.request_detail_copy()
+        {
+            self.detail.stop_drag();
+            return;
+        }
         self.invalidate_pointer();
-        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        if matches!(key.code, KeyCode::Char('c' | 'C'))
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+        {
             self.quit = true;
+            return;
+        }
+        if key.modifiers.contains(KeyModifiers::SUPER) {
             return;
         }
         if self.handle_query_key(key) {
@@ -358,5 +378,21 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             _ => {}
         }
+    }
+    pub(crate) fn clear_detail_selection(&mut self) -> bool {
+        let changed = self.detail.clear();
+        self.copy_status = None;
+        self.clipboard_requested = None;
+        changed
+    }
+    pub(crate) fn request_detail_copy(&mut self) -> bool {
+        if self.pane != Pane::Detail || self.help || self.query.modal.is_some() {
+            return false;
+        }
+        let Some(text) = self.detail.selected_text() else {
+            return false;
+        };
+        self.clipboard_requested = Some(text.into());
+        true
     }
 }

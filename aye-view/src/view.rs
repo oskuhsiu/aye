@@ -85,7 +85,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         render_main(frame, app, main);
     }
     frame.render_widget(
-        Paragraph::new(if frame.area().width<60 {
+        Paragraph::new(if let Some(status) = &app.copy_status {
+            status.as_str()
+        } else if app.pane == Pane::Detail && !app.help && app.query.modal.is_none() {
+            "Drag text to copy · Ctrl+C copies selection · q Quit · Esc Back"
+        } else if frame.area().width<60 {
             "? Help · q Quit · Esc Back"
         } else if frame.area().width<110 {
             "? Help · q Quit · Esc Back · Tab Graph/List · F Focus"
@@ -389,27 +393,20 @@ pub fn detail_text(app: &App) -> String {
 }
 fn render_detail(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = block(
-        "Detail · Enter focus · PgUp/PgDown scroll",
+        "Detail · Drag to copy · PgUp/PgDown scroll",
         app.pane == Pane::Detail,
     );
     let inner = block.inner(area);
     app.pointer_hits
         .add(inner, Target::Surface(Surface::Detail));
     let text = detail_text(app);
-    // Wrap ourselves to retain usize scrolling beyond Paragraph's u16 offset.
-    // Ratatui Text spans supply terminal cell widths, never byte slicing.
-    let lines = wrapped_lines(&text, usize::from(inner.width));
     app.detail_page = usize::from(inner.height).max(1).saturating_sub(1).max(1);
-    app.detail_max_scroll = lines.len().saturating_sub(usize::from(inner.height));
-    app.detail_scroll = app.detail_scroll.min(app.detail_max_scroll);
-    let visible = lines
-        .into_iter()
-        .skip(app.detail_scroll)
-        .take(usize::from(inner.height))
-        .map(Line::raw)
-        .collect::<Vec<_>>();
+    (app.detail_scroll, app.detail_max_scroll) = app.detail.layout(text, inner, app.detail_scroll);
     frame.render_widget(block, area);
-    frame.render_widget(Paragraph::new(Text::from(visible)), inner);
+    frame.render_widget(
+        Paragraph::new(Text::from(app.detail.visible_lines())),
+        inner,
+    );
     navigation_control(frame, app, area, Target::Back);
 }
 fn navigation_control(frame: &mut Frame, app: &mut App, area: Rect, target: Target) {
@@ -433,25 +430,10 @@ fn navigation_control(frame: &mut Frame, app: &mut App, area: Rect, target: Targ
     app.pointer_hits.add(control, target);
 }
 fn wrapped_lines(text: &str, width: usize) -> Vec<String> {
-    use ratatui::text::Span;
-    use unicode_segmentation::UnicodeSegmentation;
-    let width = width.max(1);
-    let mut output = Vec::new();
-    for line in text.split('\n') {
-        let mut row = String::new();
-        let mut used = 0;
-        for c in line.graphemes(true) {
-            let w = Span::raw(c).width();
-            if used + w > width && !row.is_empty() {
-                output.push(std::mem::take(&mut row));
-                used = 0;
-            }
-            row.push_str(c);
-            used += w;
-        }
-        output.push(row);
-    }
-    output
+    crate::detail::wrapped_ranges(text, width)
+        .into_iter()
+        .map(|range| text[range].into())
+        .collect()
 }
 pub fn status_summary(app: &App) -> String {
     let mut counts = [0usize; 4];
@@ -483,7 +465,7 @@ fn render_help(frame: &mut Frame, app: &mut App) {
     let block = block("Help · j/k PgUp/Dn Scroll · Esc Back", true);
     let inner = block.inner(area);
     app.pointer_hits.add(inner, Target::Surface(Surface::Help));
-    let text = "Mouse: click Graph/List/Recent/History tasks\nClick a pane to activate keyboard controls\nWheel: scroll the pointed surface, keep selection\nGraph: horizontal or Shift-wheel pans sideways\nGraph background: left drag pans like a map\nDrag ends on release; navigation/resize cancels\n[Details] opens selected task; [Back] returns\nMouse reporting needs terminal support/settings.\nCopy: use your terminal reporting override\n(iTerm2: hold Option). Keyboard keys still work.\n\nGraph: Left / Ctrl-h = prerequisite\nGraph: Right / l = dependent\nGraph: Up/Down or k/j = same layer\nShift-arrows: pan without changing selection\nGraph Main: - Compact; +/= Standard; 0 reset\nZoom preserves selection and viewport context.\nEnter: Detail; Esc: return to main pane\nF: focus selected ancestors and descendants\ng: full Current Graph; Esc leaves focused Main\nFocus clears filters; later filters intersect.\nTab: Graph/List (History: pane switch)\nDetail: j/k or arrows scroll; PgUp/PgDown page\n?: Help; q / Ctrl-c: Quit\n\nr: Refresh local state (poll every 500 ms)\n/ Search all tasks; arrows select; Enter reveal\nSearch outside Focus exits that focus.\nf Filters: up/down field, left/right cycle\nc clears filter draft; Enter applies; Esc cancels\nc: Recent 24h; ]: next unrelated recent task\nRecent is hidden during Focus.\nh: all closed History; Esc returns\nHistory arrows/PgUp/PgDown load more rows.\n\n● ready    ▶ in progress    ! blocked\n⏸ deferred    ✓ done    × cancelled\nCancelled prerequisites do not unlock tasks.\n\nB → A means A depends on B.\nB completion unlocks A.\nParent/discovery are detail context only.\n╳: lines cross without joining.\n\nCurrent Graph includes closed prerequisites.\nFocus root stays fixed as selection moves.";
+    let text = "Mouse: click Graph/List/Recent/History tasks\nClick a pane to activate keyboard controls\nWheel: scroll the pointed surface, keep selection\nGraph: horizontal or Shift-wheel pans sideways\nGraph background: left drag pans like a map\nDrag ends on release; navigation/resize cancels\n[Details] opens selected task; [Back] returns\nDetail: drag text; release copies selection\nCtrl+C copies selected Detail text again\nEsc/navigation clears; q always quits\nCopy sent to terminal needs clipboard permission\nOther panes: terminal override (iTerm2: Option)\n\nGraph: Left / Ctrl-h = prerequisite\nGraph: Right / l = dependent\nGraph: Up/Down or k/j = same layer\nShift-arrows: pan without changing selection\nGraph Main: - Compact; +/= Standard; 0 reset\nZoom preserves selection and viewport context.\nEnter: Detail; Esc: return to main pane\nF: focus selected ancestors and descendants\ng: full Current Graph; Esc leaves focused Main\nFocus clears filters; later filters intersect.\nTab: Graph/List (History: pane switch)\nDetail: j/k or arrows scroll; PgUp/PgDown page\n?: Help; q / unselected Ctrl-c: Quit\n\nr: Refresh local state (poll every 500 ms)\n/ Search all tasks; arrows select; Enter reveal\nSearch outside Focus exits that focus.\nf Filters: up/down field, left/right cycle\nc clears filter draft; Enter applies; Esc cancels\nc: Recent 24h; ]: next unrelated recent task\nRecent is hidden during Focus.\nh: all closed History; Esc returns\nHistory arrows/PgUp/PgDown load more rows.\n\n● ready    ▶ in progress    ! blocked\n⏸ deferred    ✓ done    × cancelled\nCancelled prerequisites do not unlock tasks.\n\nB → A means A depends on B.\nB completion unlocks A.\nParent/discovery are detail context only.\n╳: lines cross without joining.\n\nCurrent Graph includes closed prerequisites.\nFocus root stays fixed as selection moves.";
     let lines = wrapped_lines(text, usize::from(inner.width));
     app.help_page = usize::from(inner.height).saturating_sub(1).max(1);
     app.help_max_scroll = lines.len().saturating_sub(usize::from(inner.height));

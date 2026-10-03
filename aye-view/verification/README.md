@@ -33,6 +33,8 @@ Coverage includes Graph/List/Search/Filter/Focus/Recent/History/Detail/Help,
 wide/narrow/tiny resizing, Standard/Compact mouse clicks, pointed-surface wheel
 scrolling, background Graph drag/cancellation, independent list viewports,
 final matching History rows, passive SGR motion and capture cleanup,
+Detail drag highlight/copy, exact Unicode/newline clipboard requests and Ctrl+C
+copy/quit routing,
 normal/Ctrl-c/error exits, live linked-worktree
 create/claim/edit/close, packed refs, last-good errors and manual/automatic
 recovery. The scale fixture has 100 chains of ten active nodes, ten completed
@@ -64,3 +66,4 @@ bytes are required on successful sessions; startup failures occur before capture
 A shared cleanup-helper byte test and source review cover panic/error routing;
 the suite does not inject a post-setup panic or test physical terminal gestures
 and copy overrides. See [mouse contract and limits](MOUSE.md).
+Detail selection and clipboard evidence have their own [contract and limits](DETAIL_COPY.md).
