@@ -43,5 +43,51 @@ including shared crossings, arrowheads and long edges. Colored/monochrome runs
 assert identical glyphs, preserved foreground hues, neutral mixed crossings and
 unchanged unrelated segments; reversed edge iteration produces the same frame.
 
-Installed PTY acceptance and final package/review evidence are recorded after
-execution. Physical terminal theme/gesture checks are outside PTY evidence.
+On 2026-10-05, formatting, strict Clippy and 95 library plus five binary tests
+passed. Independent Standards and Spec review found no substantive issues at
+candidate `1f921625`; the Spec reviewer independently passed the six focused
+influence tests. Cargo-default locked installation was built from `766a188`,
+whose production source/manifests/locks are identical to that candidate.
+Installed aye-view 0.2.0 SHA-256:
+`756ecdb4cb6a995e066c02f5a0e5d370430da9db79842cc2845fbe6f36e286ec`.
+
+The complete installed suite passed nine interactive sessions (150 frames) and
+three startup-error sessions, including all existing browsing/copy/refresh
+scenarios. Influence adds a 20-frame monochrome and seven-frame colored session.
+Graph-local terminal attributes prove selected reverse video, affected bold,
+ordinary other prerequisite/closed paths, preserved glyph/hue footprints, mouse
+and key selection, both densities, resize, Focus/filter with a hidden intermediary
+and live close/reopen/bypass updates. Canonically valid native atomic operations
+stage intermediate closure without publishing temporary ready states. Repository
+fingerprints, terminal restoration/capture cleanup, zero viewer Git subprocesses
+and zero configured-remote contacts passed. Scale observations were startup
+0.2736 s and reload 0.3416 s in the existing 100-chain/10,000-task fixture; these
+single runs include harness overhead and do not characterize arbitrary dense DAGs.
+
+Local evidence is archived in `aye-view/test/highlight-20261005/`, including
+package/install logs, independent reports, PTY frames/raw bytes/cell attributes
+and `installed-acceptance/result.json`. Initial harness compilation/invalid-fixture
+failures are retained separately; `before-valid-fixture.log` is the actual
+pre-implementation missing-highlight failure. Physical terminal themes/gestures
+were not checked; PTY attributes do not prove universal font/theme contrast.
+
+## Persistent manual fixture group
+
+The user additionally requested semi-permanent test tickets. The working task
+state contains 31 labelled `viewer-test-fixture-v1` records: guide
+`t-139b6a3c585516415744` (`HL-00`) plus 30 scenarios. The guide is deferred and
+contains the full ID/baseline manifest, expected influence sets and reset steps.
+Ten records are deferred, 17 open/blocking and four closed (done/bypass/cancelled
+plus an isolated closed History task), with zero ready fixtures and zero claims.
+Bypass is explicit synthetic display data, not a production verification waiver.
+These records remain in the canonical task ref; source publication and task
+synchronization are separate operations.
+
+A further installed read-only PTY probe on this actual project passed 35 frames,
+12 selected-root cases, hidden-intermediary Focus/filter and the actual crossed
+five-node fixture. It verified graph-local bold/reverse attributes and unchanged
+task ref/source HEAD/worktree status. Baseline relationship/state checks matched
+every fixture's expected influence set. Keep the group after successful tests;
+temporary ready/in-progress exercises use the guide's C8 root and restore its
+baseline. Empty/removal/race/large-scale cases belong to automated/disposable
+tests rather than fabricated permanent records.

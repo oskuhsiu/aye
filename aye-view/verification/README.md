@@ -35,6 +35,9 @@ scrolling, background Graph drag/cancellation, independent list viewports,
 final matching History rows, passive SGR motion and capture cleanup,
 Detail drag highlight/copy, exact Unicode/newline clipboard requests and Ctrl+C
 copy/quit routing,
+pending downstream influence node/edge attributes in color and NO_COLOR,
+closed/cancelled/bypassed roots and cutoffs, alternate paths, hidden intermediaries
+and live lifecycle updates,
 normal/Ctrl-c/error exits, live linked-worktree
 create/claim/edit/close, packed refs, last-good errors and manual/automatic
 recovery. The scale fixture has 100 chains of ten active nodes, ten completed
@@ -67,3 +70,5 @@ A shared cleanup-helper byte test and source review cover panic/error routing;
 the suite does not inject a post-setup panic or test physical terminal gestures
 and copy overrides. See [mouse contract and limits](MOUSE.md).
 Detail selection and clipboard evidence have their own [contract and limits](DETAIL_COPY.md).
+
+Graph influence has its own [contract and results](PENDING_INFLUENCE.md).

@@ -243,8 +243,8 @@ installed PTY sessions with 37 frames. A 10,000-total/1,000-active/100-ready
 fixture started in 0.320s and reloaded in 0.678s. These are single-run
 measurements including harness overhead, from 100 chains rather than arbitrary
 dense DAGs. All canonical tasks are loaded in memory; History batches visible
-rows, not canonical data. No visual theme matrix was measured; the installed
-suite uses NO_COLOR. The [2026-09-23 path-color checks](verification/PATH_COLORS.md)
+rows, not canonical data. No visual theme matrix was measured; those installed
+sessions used NO_COLOR. The [2026-09-23 path-color checks](verification/PATH_COLORS.md)
 passed 45 Rust tests, an installed colored/monochrome crossed-pair probe and the
 five-session integration suite. They verify palette identities and neutral
 crossings, not contrast across every terminal theme. The subsequent
