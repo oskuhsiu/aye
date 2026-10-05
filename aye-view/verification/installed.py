@@ -435,6 +435,208 @@ def pane_cell(session, value, x_min, x_max, y_min=0, y_max=None):
     raise AssertionError((value, (x_min, x_max, y_min, y_max), session.text()))
 
 
+def influence_case(base, binary, audit, remote):
+    """Inspect graph-local terminal attributes, including snapshot replacement."""
+    repo, linked = fixture(base, 'influence', remote)
+    sample = aye(repo, 'create', 'Influence template')['task']
+    # Fixture-only canonical plumbing permits closed branches whose ancestors
+    # are still open, including the dependency-satisfying bypass marker.
+    specs = [
+        ('InfA', [], None), ('InfD', [], None),
+        ('InfB', [0, 1], None), ('InfC', [2], None),
+        ('InfDone', [0], 'done'), ('InfDoneTail', [4], None),
+        ('InfBypass', [0], 'bypassed'), ('InfBypTail', [6], None),
+        ('InfCancel', [0], 'cancelled'), ('InfCanTail', [8], None),
+        ('InfAlt', [0], None), ('InfJoin', [4, 10], None),
+    ]
+    parent = git(repo, 'rev-parse', STATE)
+    message = 'Pending influence fixture\n'
+    parts = [f'commit {STATE}\ncommitter Verification <viewer@example.invalid> '
+             f'1000000000 +0000\ndata {len(message)}\n{message}from {parent}\nD tasks\n']
+    ids = {}
+    for n, (title, prerequisites, resolution) in enumerate(specs):
+        task = copy.deepcopy(sample)
+        ids[title] = task_id(n)
+        task.update(id=task_id(n), title=title,
+                    depends_on=[task_id(p) for p in prerequisites],
+                    labels=['visible'] if title in ('InfA', 'InfC') else [])
+        if resolution:
+            task.update(status='closed', resolution='done' if resolution == 'bypassed'
+                        else resolution, closed_at=sample['created_at'])
+            if resolution == 'bypassed':
+                task['labels'] = ['aye:bypassed']
+        body = json.dumps(task) + '\n'
+        parts.append(f'M 100644 inline tasks/{task["id"][2:4]}/{task["id"]}.json\n'
+                     f'data {len(body.encode())}\n{body}\n')
+    parts.append('\ndone\n')
+    git(repo, 'fast-import', '--quiet', input=''.join(parts))
+    assert len(aye(repo, 'list', '--all')) == len(specs)
+    before = snapshot(repo, linked)
+    reports = {}
+    for color in (False, True):
+        name = 'color' if color else 'no-color'
+        with Session(linked / 'nested', base / ('influence-' + name + '-pty'),
+                     binary, audit, cols=240, rows=60,
+                     env={'NO_COLOR': '' if color else '1'}) as session:
+            proofs = []
+
+            def node(title):
+                # Never accept the duplicate title in Detail, header or footer.
+                col, row = pane_cell(session, title, 1,
+                                     session.screen.columns * 65 // 100 - 1,
+                                     3, session.screen.lines - 2)
+                left = max(x for x in range(col)
+                           if session.screen.buffer[row][x].data == '│')
+                width = 20 if 'Compact ·' in session.text() else 28
+                return col, row, left, width
+
+            def styled(title, bold, reverse=False):
+                try:
+                    col, row, _, _ = node(title)
+                except (AssertionError, ValueError):
+                    return False  # A predicate may see an incomplete frame.
+                return all((session.screen.buffer[row][x].bold,
+                            session.screen.buffer[row][x].reverse) == (bold, reverse)
+                           for x in range(col, col + len(title)))
+
+            def check_nodes(selected, affected, titles=None):
+                for title in titles or ids:
+                    expected = (title == selected or title in affected, title == selected)
+                    assert styled(title, *expected), (title, expected, session.text())
+                    col, row, _, _ = node(title)
+                    cell = session.screen.buffer[row][col]
+                    proofs.append(dict(frame=session.frames, title=title, col=col, row=row,
+                                       bold=cell.bold, reverse=cell.reverse, fg=cell.fg))
+
+            def check_port(title, bold, incoming=False):
+                _, row, left, width = node(title)
+                col, row = (left - 1, row + 1) if incoming else (left + width, row)
+                cell = session.screen.buffer[row][col]
+                assert cell.data in '─│┌┐└┘├┤┬┴┼╳→', (title, cell, session.text())
+                assert (cell.bold, cell.reverse) == (bold, False), (title, cell)
+                proofs.append(dict(frame=session.frames, port=title, incoming=incoming,
+                                   col=col, row=row, glyph=cell.data,
+                                   bold=cell.bold, reverse=cell.reverse, fg=cell.fg))
+
+            def edges():
+                rectangles = [(left, row - 1, width) for _, row, left, width
+                              in (node(title) for title in ids)]
+                return {(x, y): (cell.data, cell.fg)
+                        for y in range(3, session.screen.lines - 2)
+                        for x in range(1, session.screen.columns * 65 // 100 - 1)
+                        if not any(left <= x < left + width and top <= y < top + 4
+                                   for left, top, width in rectangles)
+                        if (cell := session.screen.buffer[y][x]).data
+                        in '─│┌┐└┘├┤┬┴┼╳→'}
+
+            affected = {'InfB', 'InfC', 'InfAlt', 'InfJoin'}
+            session.wait('startup', lambda _: styled('InfA', True, True), session.started)
+            check_nodes('InfA', affected)
+            for title, bold in [('InfA', True), ('InfB', True), ('InfD', False),
+                                ('InfDone', False), ('InfBypass', False),
+                                ('InfCancel', False), ('InfAlt', True)]:
+                check_port(title, bold)
+            for title in ('InfDone', 'InfBypass', 'InfCancel'):
+                check_port(title, False, incoming=True)
+            footprint = edges()
+            assert footprint and any(glyph == '╳' for glyph, _ in footprint.values())
+            if color:
+                assert any(fg != 'default' for _, fg in footprint.values())
+            else:
+                assert all(fg == 'default' for _, fg in footprint.values())
+            session.key('right-select-B', b'\x1b[C', lambda _: styled('InfB', True, True))
+            check_nodes('InfB', {'InfC'})
+            assert edges() == footprint, 'Selection changed edge glyphs or hues'
+            session.key('left-select-A', b'\x1b[D', lambda _: styled('InfA', True, True))
+            check_nodes('InfA', affected)
+            assert edges() == footprint
+            for selected, downstream in [('InfDone', set()), ('InfBypass', set()),
+                                         ('InfCancel', {'InfCanTail'})]:
+                col, row, _, _ = node(selected)
+                session.mouse_click('select-' + selected, col, row,
+                                    lambda _, title=selected: styled(title, True, True))
+                check_nodes(selected, downstream)
+                check_port(selected, bool(downstream))
+                assert edges() == footprint
+            col, row, _, _ = node('InfA')
+            session.mouse_click('click-root-A', col, row,
+                                lambda _: styled('InfA', True, True))
+            if not color:
+                session.key('compact', b'-', lambda t: 'Compact ·' in t
+                            and styled('InfC', True))
+                check_nodes('InfA', affected)
+                check_port('InfD', False)
+                session.resize(220, 55)
+                session.wait('resize-compact', lambda _: styled('InfA', True, True)
+                             and styled('InfC', True))
+                check_nodes('InfA', affected)
+                session.key('standard', b'+', lambda t: 'Standard ·' in t
+                            and styled('InfC', True))
+                check_nodes('InfA', affected)
+                session.key('focus', b'F', contains('Focus Graph · 11 visible tasks'))
+                session.key('filter-open', b'f', contains('Filter · five'))
+                # Labels are sorted: aye:bypassed then visible. Hide B while
+                # keeping A/C inside Focus; influence still traverses B.
+                session.key('filter-hidden-intermediate', b'\x1b[B' * 3 + b'\x1b[C' * 2 + b'\r',
+                            lambda t: 'Focus Graph · 2 visible tasks · filtered' in t
+                            and styled('InfC', True))
+                check_nodes('InfA', {'InfC'}, ['InfA', 'InfC'])
+                assert not any(x < session.screen.columns * 65 // 100
+                               for x, _ in session.cells('InfB'))
+                # Both remaining nodes have no visible dependency: no shortcut
+                # edge may be synthesized through the hidden intermediate.
+                for title in ('InfA', 'InfC'):
+                    _, row, left, width = node(title)
+                    assert session.screen.buffer[row][left + width].data == ' '
+                session.key('current', b'g', contains('Graph · 12 visible tasks'))
+                check_nodes('InfA', affected)
+                unchanged(before, repo, linked)
+
+                def writer(name, title, *args, selected='InfA', highlighted=()):
+                    nonlocal before
+                    aye(repo, *args)
+                    before = snapshot(repo, linked)
+                    session.wait(name, lambda _: styled(title, title in highlighted,
+                                                        title == selected))
+                    check_nodes(selected, set(highlighted))
+                    unchanged(before, repo, linked)
+
+                # B must be ready to close. One publication temporarily
+                # satisfies its prerequisites and restores both open parents;
+                # the viewer can observe only the final closed-B cutoff.
+                close_request = repo.parent / 'close-intermediate.json'
+                close_request.write_text(json.dumps({
+                    'version': 1,
+                    'operations': [
+                        {'op': op, 'id': ids[title]}
+                        for op, title in [('close', 'InfA'), ('close', 'InfD'),
+                                          ('close', 'InfB'), ('reopen', 'InfA'),
+                                          ('reopen', 'InfD')]
+                    ],
+                }) + '\n')
+                writer('close-intermediate', 'InfC', 'apply', '--file', str(close_request),
+                       highlighted={'InfAlt', 'InfJoin'})
+                writer('reopen-intermediate', 'InfC', 'reopen', ids['InfB'],
+                       highlighted=affected)
+                writer('close-root', 'InfB', 'close', ids['InfA'])
+                writer('reopen-root', 'InfB', 'reopen', ids['InfA'], highlighted=affected)
+                writer('bypass-root', 'InfB', 'bypass', ids['InfA'],
+                       '--reason', 'Disposable PTY lifecycle fixture',
+                       '--missing', 'Synthetic fixture-only unavailable check')
+                _, row, left, _ = node('InfB')
+                assert ''.join(session.screen.buffer[row + 1][x].data
+                               for x in range(left + 1, left + 8)) == 'blocked'
+                writer('reopen-bypassed-root', 'InfB', 'reopen', ids['InfA'],
+                       highlighted=affected)
+            check_nodes('InfA', affected)
+            unchanged(before, repo, linked)
+            reports[name] = session.finish()
+            (session.output / 'cell-attributes.json').write_text(json.dumps(proofs, indent=2) + '\n')
+        unchanged(before, repo, linked)
+    return {'readonly_between_writer_changes': True, 'cell_attributes_verified': True,
+            'sessions': reports}
+
+
 def scale_case(base, binary, audit, remote):
     repo, linked = fixture(base, 'scale', remote)
     seed_scale(repo)
@@ -1016,6 +1218,7 @@ def main():
             for name, case in [('scale', scale_case), ('mouse', mouse_case),
                                ('mouse-browsing', mouse_browsing_case),
                                ('detail-copy', detail_copy_case),
+                               ('influence', influence_case),
                                ('live', live_case), ('errors', error_cases)]:
                 print(f'Running {name}', flush=True)
                 report[name] = case(base, binary, audit, remote)
