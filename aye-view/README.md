@@ -166,6 +166,21 @@ or use `g` for full Current Graph. `g` retains the Recent toggle. A chosen Searc
 result can temporarily bypass filters; moving to another task or applying filters
 ends that reveal. No-match Search stays open until you edit the query or cancel.
 
+Graph selection uses reverse video; bold nodes and lines show pending downstream
+influence. It follows dependency links through nonclosed work and stops before
+every closed downstream task. Selecting done or bypassed work has no influence;
+selecting a cancelled prerequisite may still affect pending dependents because
+cancellation does not satisfy it. Highlighted tasks can remain blocked by other
+prerequisites or manual blockers. Status colors and source-path hues stay intact,
+and the emphasis works with NO_COLOR.
+
+Influence is calculated from canonical tasks, even through a filtered-out pending
+intermediary, then applied only to the nodes and edges already in Graph. Selection
+does not enter Focus, reveal hidden tasks, clear filters or alter layout/pan.
+Shared crossing cells can be bold where an affected route passes; the other
+route stays ordinary beyond the shared cell. See the
+[influence verification record](verification/PENDING_INFLUENCE.md).
+
 Focus captures a fixed root even as selection moves. Entering it clears filters;
 later filters narrow its scope. It excludes unrelated siblings and descendants'
 other prerequisites. Searching for a result outside Focus exits Focus. Recent

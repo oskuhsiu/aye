@@ -169,7 +169,11 @@ fn every_symbol_no_color_and_repeat_frame_are_meaningful() {
                     f.area(),
                     &graph,
                     &state,
-                    Some(selected),
+                    &PendingInfluence::new(
+                        &state,
+                        &crate::model::Relations::new(&state),
+                        Some(selected),
+                    ),
                     Viewport::default(),
                     colors,
                 )
@@ -197,7 +201,11 @@ fn every_symbol_no_color_and_repeat_frame_are_meaningful() {
                     f.area(),
                     &graph,
                     &state,
-                    Some(selected),
+                    &PendingInfluence::new(
+                        &state,
+                        &crate::model::Relations::new(&state),
+                        Some(selected),
+                    ),
                     Viewport::default(),
                     colors,
                 )
@@ -255,7 +263,7 @@ fn crossed_dependencies_remain_visually_distinct_paths() {
                     f.area(),
                     &graph,
                     &state,
-                    None,
+                    &PendingInfluence::default(),
                     Viewport::default(),
                     false,
                 )
@@ -358,7 +366,7 @@ fn long_edge_departure_arrival_tracks_never_share_independent_segments() {
                     f.area(),
                     &graph,
                     &state,
-                    None,
+                    &PendingInfluence::default(),
                     Viewport::default(),
                     false,
                 )
@@ -400,7 +408,11 @@ fn color_frame(graph: &Graph, state: &State, colors: bool) -> Buffer {
                 f.area(),
                 graph,
                 state,
-                graph.nodes.keys().next().map(String::as_str),
+                &PendingInfluence::new(
+                    state,
+                    &crate::model::Relations::new(state),
+                    graph.nodes.keys().next().map(String::as_str),
+                ),
                 Viewport::default(),
                 colors,
             )
@@ -504,6 +516,103 @@ fn source_colors_fanout_and_crowded_layer_cycle_by_full_id() {
             let expected = palette[index % palette.len()];
             assert_eq!(point_color(&frame, edge.points[0]), expected);
             assert_eq!(point_color(&frame, *edge.points.last().unwrap()), expected);
+        }
+    }
+}
+
+#[test]
+fn influence_crossings_shared_cells_long_edges_and_colors_keep_route_truth() {
+    for density in [Density::Standard, Density::Compact] {
+        for long in [false, true] {
+            let mut state = crossing_fixture();
+            let root = "t-00000000000000000000";
+            if long {
+                state
+                    .tasks
+                    .get_mut("t-00000000000000000004")
+                    .unwrap()
+                    .depends_on
+                    .push(root.into());
+            }
+            state.validate().unwrap();
+            let graph = Graph::with_density(&state, &current_ids(&state), density);
+            let relations = crate::model::Relations::new(&state);
+            let influence = PendingInfluence::new(&state, &relations, Some(root));
+            let mut all = BTreeSet::new();
+            let mut affected = BTreeSet::new();
+            for edge in &graph.edges {
+                let cells = crate::influence_tests::route_cells(edge);
+                all.extend(cells.iter().copied());
+                if edge.prerequisite == root || edge.prerequisite == "t-00000000000000000003" {
+                    affected.extend(cells);
+                }
+            }
+            assert!(all.difference(&affected).next().is_some());
+            for colors in [false, true] {
+                let render = |graph: &Graph, selection: &PendingInfluence<'_>| {
+                    let mut terminal = Terminal::new(TestBackend::new(160, 32)).unwrap();
+                    terminal
+                        .draw(|f| {
+                            draw(
+                                f,
+                                f.area(),
+                                graph,
+                                &state,
+                                selection,
+                                Viewport::default(),
+                                colors,
+                            )
+                        })
+                        .unwrap();
+                    terminal.backend().buffer().clone()
+                };
+                let plain = render(&graph, &PendingInfluence::default());
+                let highlighted = render(&graph, &influence);
+                assert!(
+                    highlighted
+                        .content
+                        .iter()
+                        .any(|cell| cell.symbol() == "╳" && cell.modifier.contains(Modifier::BOLD))
+                );
+                for &(x, y) in &all {
+                    let a = &plain[(x as u16, y as u16)];
+                    let b = &highlighted[(x as u16, y as u16)];
+                    assert_eq!(a.symbol(), b.symbol(), "route glyph at ({x},{y})");
+                    assert_eq!(a.fg, b.fg, "source hue at ({x},{y})");
+                    assert_eq!(
+                        b.modifier.contains(Modifier::BOLD),
+                        affected.contains(&(x, y))
+                    );
+                    assert!(!b.modifier.contains(Modifier::REVERSED));
+                    if b.symbol() == "╳" {
+                        assert_eq!(b.fg, Color::Reset);
+                    }
+                }
+                for node in graph.nodes.values() {
+                    let a = &plain[(node.x as u16, node.y as u16)];
+                    let b = &highlighted[(node.x as u16, node.y as u16)];
+                    assert_eq!(a.fg, b.fg);
+                    assert_eq!(a.symbol(), b.symbol());
+                    assert_eq!(b.modifier.contains(Modifier::REVERSED), node.id == root);
+                    assert_eq!(
+                        b.modifier.contains(Modifier::BOLD),
+                        node.id == root
+                            || ["t-00000000000000000003", "t-00000000000000000004"]
+                                .contains(&node.id.as_str())
+                    );
+                }
+                if !colors {
+                    assert!(
+                        highlighted
+                            .content
+                            .iter()
+                            .all(|cell| cell.fg == Color::Reset)
+                    );
+                }
+                let mut reordered = graph.clone();
+                reordered.edges.reverse();
+                assert_eq!(highlighted, render(&reordered, &influence));
+            }
         }
     }
 }

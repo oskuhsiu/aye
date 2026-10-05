@@ -37,6 +37,45 @@ impl Relations {
         relations
     }
 }
+/// Session-local selection and pending downstream dependency influence.
+/// Derived from canonical tasks, independently of the visible graph scope.
+#[derive(Default)]
+pub struct PendingInfluence<'a> {
+    pub selected: Option<&'a str>,
+    pub affected: BTreeSet<&'a str>,
+}
+impl<'a> PendingInfluence<'a> {
+    pub fn new(state: &'a State, relations: &Relations, selected: Option<&'a str>) -> Self {
+        let mut influence = Self {
+            selected,
+            ..Self::default()
+        };
+        let Some(root) = selected.and_then(|id| state.tasks.get(id)) else {
+            return influence;
+        };
+        // Only done satisfies a prerequisite; a cancelled selection can still
+        // influence pending work. Closed downstream targets always stop a branch.
+        if root.status == "closed" && root.resolution.as_deref() == Some("done") {
+            return influence;
+        }
+        let mut pending = vec![root.id.as_str()];
+        while let Some(id) = pending.pop() {
+            if let Some(dependents) = relations.blocks.get(id) {
+                for id in dependents {
+                    let task = &state.tasks[id];
+                    if task.status != "closed" && influence.affected.insert(task.id.as_str()) {
+                        pending.push(task.id.as_str());
+                    }
+                }
+            }
+        }
+        influence
+    }
+    pub fn includes_edge(&self, prerequisite: &str, dependent: &str) -> bool {
+        self.affected.contains(dependent)
+            && (self.selected == Some(prerequisite) || self.affected.contains(prerequisite))
+    }
+}
 /// All non-closed tasks and their prerequisite ancestors, in stable list order.
 pub fn current_ids(state: &State) -> Vec<String> {
     let mut included = BTreeSet::new();

@@ -1,5 +1,5 @@
 //! Deterministic dependency layout and terminal-clipped drawing.
-use crate::model::{sanitize, status};
+use crate::model::{PendingInfluence, sanitize, status};
 use aye::model::{State, Task};
 use ratatui::{
     Frame,
@@ -274,7 +274,7 @@ pub fn draw(
     area: Rect,
     graph: &Graph,
     state: &State,
-    selected: Option<&str>,
+    influence: &PendingInfluence<'_>,
     viewport: Viewport,
     colors: bool,
 ) {
@@ -285,7 +285,7 @@ pub fn draw(
         area,
         viewport,
     };
-    canvas.edges(graph, colors);
+    canvas.edges(graph, influence, colors);
     for node in graph.nodes.values() {
         if node.x + node_width <= viewport.x
             || node.x >= viewport.x + i64::from(area.width)
@@ -295,10 +295,12 @@ pub fn draw(
             continue;
         }
         let task = &state.tasks[&node.id];
-        let chosen = selected == Some(node.id.as_str());
+        let chosen = influence.selected == Some(node.id.as_str());
         let mut style = task_style(state, task, colors);
         if chosen {
             style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
+        } else if influence.affected.contains(node.id.as_str()) {
+            style = style.add_modifier(Modifier::BOLD);
         }
         for dy in 0..node_height {
             for dx in 0..node_width {
@@ -420,16 +422,22 @@ struct Stroke {
     first_edge: Option<usize>,
     same_source: bool,
     same_target: bool,
+    affected: bool,
 }
 impl Stroke {
     fn style(self, graph: &Graph, styles: &BTreeMap<&str, Style>) -> Style {
-        if self.same_source {
+        let style = if self.same_source {
             self.first_edge
                 .and_then(|index| styles.get(graph.edges[index].prerequisite.as_str()))
                 .copied()
                 .unwrap_or_default()
         } else {
             Style::default()
+        };
+        if self.affected {
+            style.add_modifier(Modifier::BOLD)
+        } else {
+            style
         }
     }
     fn symbol(self) -> &'static str {
@@ -491,12 +499,13 @@ impl Canvas<'_> {
             }
         }
     }
-    fn edges(&mut self, graph: &Graph, colors: bool) {
+    fn edges(&mut self, graph: &Graph, influence: &PendingInfluence<'_>, colors: bool) {
         let styles = source_styles(graph, colors);
         // Only visible cells carry routing metadata, regardless of world dimensions.
         let mut strokes =
             vec![Stroke::default(); usize::from(self.area.width) * usize::from(self.area.height)];
         for (index, edge) in graph.edges.iter().enumerate() {
+            let affected = influence.includes_edge(&edge.prerequisite, &edge.dependent);
             for segment in edge.points.windows(2) {
                 let (a, b) = (segment[0], segment[1]);
                 if a.1 == b.1 {
@@ -511,7 +520,7 @@ impl Canvas<'_> {
                     {
                         let directions =
                             if x > low { WEST } else { 0 } | if x < high { EAST } else { 0 };
-                        self.record(&mut strokes, graph, index, (x, a.1), directions);
+                        self.record(&mut strokes, graph, index, (x, a.1), directions, affected);
                     }
                 } else {
                     if a.0 < self.viewport.x || a.0 >= self.viewport.x + i64::from(self.area.width)
@@ -525,7 +534,7 @@ impl Canvas<'_> {
                     {
                         let directions =
                             if y > low { NORTH } else { 0 } | if y < high { SOUTH } else { 0 };
-                        self.record(&mut strokes, graph, index, (a.0, y), directions);
+                        self.record(&mut strokes, graph, index, (a.0, y), directions, affected);
                     }
                 }
             }
@@ -561,11 +570,13 @@ impl Canvas<'_> {
         index: usize,
         point: (i64, i64),
         directions: u8,
+        affected: bool,
     ) {
         if let Some((x, y)) = self.position(point.0, point.1) {
             let cell = &mut strokes[usize::from(y - self.area.y) * usize::from(self.area.width)
                 + usize::from(x - self.area.x)];
             cell.directions |= directions;
+            cell.affected |= affected;
             if let Some(first) = cell.first_edge {
                 cell.same_source &=
                     graph.edges[first].prerequisite == graph.edges[index].prerequisite;
