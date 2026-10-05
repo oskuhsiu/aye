@@ -1,3 +1,11 @@
+# Stronger glyph emphasis (2026-10-05)
+
+Affected unselected nodes use double borders, paths use heavy/mixed-weight glyphs
+and affected arrowheads use ▶. Selection retains reverse video. Directional
+weight preserves unrelated light arms at shared junctions; nonjoining ╳ and
+status/source foregrounds remain unchanged. Geometry and influence rules remain
+those documented below. BOLD is secondary; shape carries the distinction.
+
 # Pending downstream influence
 
 Selecting a Graph task keeps its existing bold reverse-video selection. Nonclosed

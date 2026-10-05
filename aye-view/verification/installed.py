@@ -486,7 +486,7 @@ def influence_case(base, binary, audit, remote):
                                      session.screen.columns * 65 // 100 - 1,
                                      3, session.screen.lines - 2)
                 left = max(x for x in range(col)
-                           if session.screen.buffer[row][x].data == '│')
+                           if session.screen.buffer[row][x].data in '│║')
                 width = 20 if 'Compact ·' in session.text() else 28
                 return col, row, left, width
 
@@ -503,7 +503,8 @@ def influence_case(base, binary, audit, remote):
                 for title in titles or ids:
                     expected = (title == selected or title in affected, title == selected)
                     assert styled(title, *expected), (title, expected, session.text())
-                    col, row, _, _ = node(title)
+                    col, row, left, _ = node(title)
+                    assert session.screen.buffer[row - 1][left].data == ('╔' if title in affected else '┌'), (title, session.text())
                     cell = session.screen.buffer[row][col]
                     proofs.append(dict(frame=session.frames, title=title, col=col, row=row,
                                        bold=cell.bold, reverse=cell.reverse, fg=cell.fg))
@@ -512,22 +513,25 @@ def influence_case(base, binary, audit, remote):
                 _, row, left, width = node(title)
                 col, row = (left - 1, row + 1) if incoming else (left + width, row)
                 cell = session.screen.buffer[row][col]
-                assert cell.data in '─│┌┐└┘├┤┬┴┼╳→', (title, cell, session.text())
+                assert cell.data in '─━│┃┌┍┎┏┐┑┒┓└┕┖┗┘┙┚┛├┝┞┟┠┡┢┣┤┥┦┧┨┩┪┫┬┭┮┯┰┱┲┳┴┵┶┷┸┹┺┻┼┽┾┿╀╁╂╃╄╅╆╇╈╉╊╋╴╵╶╷╸╹╺╻╼╽╾╿→▶╳', (title, cell, session.text())
                 assert (cell.bold, cell.reverse) == (bold, False), (title, cell)
+                if bold: assert cell.data in '━┃┏┓┗┛┣┫┳┻╋▶', (title, cell)
                 proofs.append(dict(frame=session.frames, port=title, incoming=incoming,
                                    col=col, row=row, glyph=cell.data,
                                    bold=cell.bold, reverse=cell.reverse, fg=cell.fg))
 
+            light_strokes = str.maketrans({'─': '─', '━': '─', '│': '│', '┃': '│', '┌': '┌', '┍': '┌', '┎': '┌', '┏': '┌', '┐': '┐', '┑': '┐', '┒': '┐', '┓': '┐', '└': '└', '┕': '└', '┖': '└', '┗': '└', '┘': '┘', '┙': '┘', '┚': '┘', '┛': '┘', '├': '├', '┝': '├', '┞': '├', '┟': '├', '┠': '├', '┡': '├', '┢': '├', '┣': '├', '┤': '┤', '┥': '┤', '┦': '┤', '┧': '┤', '┨': '┤', '┩': '┤', '┪': '┤', '┫': '┤', '┬': '┬', '┭': '┬', '┮': '┬', '┯': '┬', '┰': '┬', '┱': '┬', '┲': '┬', '┳': '┬', '┴': '┴', '┵': '┴', '┶': '┴', '┷': '┴', '┸': '┴', '┹': '┴', '┺': '┴', '┻': '┴', '┼': '┼', '┽': '┼', '┾': '┼', '┿': '┼', '╀': '┼', '╁': '┼', '╂': '┼', '╃': '┼', '╄': '┼', '╅': '┼', '╆': '┼', '╇': '┼', '╈': '┼', '╉': '┼', '╊': '┼', '╋': '┼', '╴': '─', '╵': '│', '╶': '─', '╷': '│', '╸': '─', '╹': '│', '╺': '─', '╻': '│', '╼': '─', '╽': '│', '╾': '─', '╿': '│', '▶': '→'})
+
             def edges():
                 rectangles = [(left, row - 1, width) for _, row, left, width
                               in (node(title) for title in ids)]
-                return {(x, y): (cell.data, cell.fg)
+                return {(x, y): (cell.data.translate(light_strokes), cell.fg)
                         for y in range(3, session.screen.lines - 2)
                         for x in range(1, session.screen.columns * 65 // 100 - 1)
                         if not any(left <= x < left + width and top <= y < top + 4
                                    for left, top, width in rectangles)
                         if (cell := session.screen.buffer[y][x]).data
-                        in '─│┌┐└┘├┤┬┴┼╳→'}
+                        in '─━│┃┌┍┎┏┐┑┒┓└┕┖┗┘┙┚┛├┝┞┟┠┡┢┣┤┥┦┧┨┩┪┫┬┭┮┯┰┱┲┳┴┵┶┷┸┹┺┻┼┽┾┿╀╁╂╃╄╅╆╇╈╉╊╋╴╵╶╷╸╹╺╻╼╽╾╿→▶╳'}
 
             affected = {'InfB', 'InfC', 'InfAlt', 'InfJoin'}
             session.wait('startup', lambda _: styled('InfA', True, True), session.started)

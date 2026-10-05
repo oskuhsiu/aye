@@ -53,7 +53,9 @@ fn zoom_compact_fits_more_complete_nodes_and_preserves_details_and_truth() {
     key(&mut app, '-');
     let compact = frame(&mut app, 88, 18);
     assert!(app.graph.width < old_graph.width);
-    assert!(text(&compact).matches('┘').count() > text(&standard).matches('┘').count());
+    assert!(
+        text(&compact).matches(['┘', '╝']).count() > text(&standard).matches(['┘', '╝']).count()
+    );
     assert!(text(&compact).contains("Compact"));
     assert!(text(&compact).contains("👩‍💻"));
     assert!(text(&compact).contains('…'));

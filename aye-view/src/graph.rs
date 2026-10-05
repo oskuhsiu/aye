@@ -296,6 +296,7 @@ pub fn draw(
         }
         let task = &state.tasks[&node.id];
         let chosen = influence.selected == Some(node.id.as_str());
+        let double = !chosen && influence.affected.contains(node.id.as_str());
         let mut style = task_style(state, task, colors);
         if chosen {
             style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
@@ -311,27 +312,36 @@ pub fn draw(
             (node.x + 1, node.y),
             (node.x + node_width - 2, node.y),
             style,
+            double,
         );
         canvas.line(
             (node.x + 1, node.y + node_height - 1),
             (node.x + node_width - 2, node.y + node_height - 1),
             style,
+            double,
         );
         canvas.line(
             (node.x, node.y + 1),
             (node.x, node.y + node_height - 2),
             style,
+            double,
         );
         canvas.line(
             (node.x + node_width - 1, node.y + 1),
             (node.x + node_width - 1, node.y + node_height - 2),
             style,
+            double,
         );
+        let corners = if double {
+            ["╔", "╗", "╚", "╝"]
+        } else {
+            ["┌", "┐", "└", "┘"]
+        };
         for (dx, dy, symbol) in [
-            (0, 0, "┌"),
-            (node_width - 1, 0, "┐"),
-            (0, node_height - 1, "└"),
-            (node_width - 1, node_height - 1, "┘"),
+            (0, 0, corners[0]),
+            (node_width - 1, 0, corners[1]),
+            (0, node_height - 1, corners[2]),
+            (node_width - 1, node_height - 1, corners[3]),
         ] {
             canvas.cell(node.x + dx, node.y + dy, symbol, style);
         }
@@ -422,7 +432,7 @@ struct Stroke {
     first_edge: Option<usize>,
     same_source: bool,
     same_target: bool,
-    affected: bool,
+    affected_directions: u8,
 }
 impl Stroke {
     fn style(self, graph: &Graph, styles: &BTreeMap<&str, Style>) -> Style {
@@ -434,7 +444,7 @@ impl Stroke {
         } else {
             Style::default()
         };
-        if self.affected {
+        if self.affected_directions != 0 {
             style.add_modifier(Modifier::BOLD)
         } else {
             style
@@ -444,18 +454,94 @@ impl Stroke {
         if !self.same_source && !self.same_target {
             return "╳";
         }
-        match self.directions {
-            1 | 4 | 5 => "│",
-            2 | 8 | 10 => "─",
-            3 => "└",
-            6 => "┌",
-            9 => "┘",
-            12 => "┐",
-            7 => "├",
-            11 => "┴",
-            13 => "┤",
-            14 => "┬",
-            15 => "┼",
+        // Full stems at ports retain the existing connection to node borders.
+        if matches!(self.directions, 1 | 4) {
+            return if self.affected_directions == 0 {
+                "│"
+            } else {
+                "┃"
+            };
+        }
+        if matches!(self.directions, 2 | 8) {
+            return if self.affected_directions == 0 {
+                "─"
+            } else {
+                "━"
+            };
+        }
+        match (self.directions, self.affected_directions) {
+            (10, 0) => "─",
+            (10, 10) => "━",
+            (5, 0) => "│",
+            (5, 5) => "┃",
+            (6, 0) => "┌",
+            (6, 2) => "┍",
+            (6, 4) => "┎",
+            (6, 6) => "┏",
+            (12, 0) => "┐",
+            (12, 8) => "┑",
+            (12, 4) => "┒",
+            (12, 12) => "┓",
+            (3, 0) => "└",
+            (3, 2) => "┕",
+            (3, 1) => "┖",
+            (3, 3) => "┗",
+            (9, 0) => "┘",
+            (9, 8) => "┙",
+            (9, 1) => "┚",
+            (9, 9) => "┛",
+            (7, 0) => "├",
+            (7, 2) => "┝",
+            (7, 1) => "┞",
+            (7, 4) => "┟",
+            (7, 5) => "┠",
+            (7, 3) => "┡",
+            (7, 6) => "┢",
+            (7, 7) => "┣",
+            (13, 0) => "┤",
+            (13, 8) => "┥",
+            (13, 1) => "┦",
+            (13, 4) => "┧",
+            (13, 5) => "┨",
+            (13, 9) => "┩",
+            (13, 12) => "┪",
+            (13, 13) => "┫",
+            (14, 0) => "┬",
+            (14, 8) => "┭",
+            (14, 2) => "┮",
+            (14, 10) => "┯",
+            (14, 4) => "┰",
+            (14, 12) => "┱",
+            (14, 6) => "┲",
+            (14, 14) => "┳",
+            (11, 0) => "┴",
+            (11, 8) => "┵",
+            (11, 2) => "┶",
+            (11, 10) => "┷",
+            (11, 1) => "┸",
+            (11, 9) => "┹",
+            (11, 3) => "┺",
+            (11, 11) => "┻",
+            (15, 0) => "┼",
+            (15, 8) => "┽",
+            (15, 2) => "┾",
+            (15, 10) => "┿",
+            (15, 1) => "╀",
+            (15, 4) => "╁",
+            (15, 5) => "╂",
+            (15, 9) => "╃",
+            (15, 3) => "╄",
+            (15, 12) => "╅",
+            (15, 6) => "╆",
+            (15, 11) => "╇",
+            (15, 14) => "╈",
+            (15, 13) => "╉",
+            (15, 7) => "╊",
+            (15, 15) => "╋",
+            (10, 2) => "╼",
+            (5, 4) => "╽",
+            (10, 8) => "╾",
+            (5, 1) => "╿",
             _ => " ",
         }
     }
@@ -480,14 +566,14 @@ impl Canvas<'_> {
             self.buffer[p].set_symbol(symbol).set_style(style);
         }
     }
-    fn line(&mut self, a: (i64, i64), b: (i64, i64), style: Style) {
+    fn line(&mut self, a: (i64, i64), b: (i64, i64), style: Style, double: bool) {
         if a.1 == b.1 {
             let lo = a.0.min(b.0).max(self.viewport.x);
             let hi =
                 a.0.max(b.0)
                     .min(self.viewport.x + i64::from(self.area.width) - 1);
             for x in lo..=hi {
-                self.cell(x, a.1, "─", style);
+                self.cell(x, a.1, if double { "═" } else { "─" }, style);
             }
         } else {
             let lo = a.1.min(b.1).max(self.viewport.y);
@@ -495,7 +581,7 @@ impl Canvas<'_> {
                 a.1.max(b.1)
                     .min(self.viewport.y + i64::from(self.area.height) - 1);
             for y in lo..=hi {
-                self.cell(a.0, y, "│", style);
+                self.cell(a.0, y, if double { "║" } else { "│" }, style);
             }
         }
     }
@@ -559,7 +645,16 @@ impl Canvas<'_> {
             {
                 let stroke = strokes[usize::from(sy - self.area.y) * usize::from(self.area.width)
                     + usize::from(sx - self.area.x)];
-                self.cell(x, y, "→", stroke.style(graph, &styles));
+                self.cell(
+                    x,
+                    y,
+                    if stroke.affected_directions != 0 {
+                        "▶"
+                    } else {
+                        "→"
+                    },
+                    stroke.style(graph, &styles),
+                );
             }
         }
     }
@@ -576,7 +671,9 @@ impl Canvas<'_> {
             let cell = &mut strokes[usize::from(y - self.area.y) * usize::from(self.area.width)
                 + usize::from(x - self.area.x)];
             cell.directions |= directions;
-            cell.affected |= affected;
+            if affected {
+                cell.affected_directions |= directions;
+            }
             if let Some(first) = cell.first_edge {
                 cell.same_source &=
                     graph.edges[first].prerequisite == graph.edges[index].prerequisite;

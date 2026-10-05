@@ -577,7 +577,20 @@ fn influence_crossings_shared_cells_long_edges_and_colors_keep_route_truth() {
                 for &(x, y) in &all {
                     let a = &plain[(x as u16, y as u16)];
                     let b = &highlighted[(x as u16, y as u16)];
-                    assert_eq!(a.symbol(), b.symbol(), "route glyph at ({x},{y})");
+                    if !affected.contains(&(x, y)) || a.symbol() == "╳" {
+                        assert_eq!(
+                            a.symbol(),
+                            b.symbol(),
+                            "ordinary/crossing glyph at ({x},{y})"
+                        );
+                    } else {
+                        assert_ne!(
+                            a.symbol(),
+                            b.symbol(),
+                            "affected route needs intrinsic shape at ({x},{y})"
+                        );
+                    }
+                    assert_eq!(Span::raw(b.symbol()).width(), 1);
                     assert_eq!(a.fg, b.fg, "source hue at ({x},{y})");
                     assert_eq!(
                         b.modifier.contains(Modifier::BOLD),
@@ -592,7 +605,11 @@ fn influence_crossings_shared_cells_long_edges_and_colors_keep_route_truth() {
                     let a = &plain[(node.x as u16, node.y as u16)];
                     let b = &highlighted[(node.x as u16, node.y as u16)];
                     assert_eq!(a.fg, b.fg);
-                    assert_eq!(a.symbol(), b.symbol());
+                    if influence.affected.contains(node.id.as_str()) {
+                        assert_eq!(b.symbol(), "╔");
+                    } else {
+                        assert_eq!(a.symbol(), b.symbol());
+                    }
                     assert_eq!(b.modifier.contains(Modifier::REVERSED), node.id == root);
                     assert_eq!(
                         b.modifier.contains(Modifier::BOLD),
@@ -614,5 +631,50 @@ fn influence_crossings_shared_cells_long_edges_and_colors_keep_route_truth() {
                 assert_eq!(highlighted, render(&reordered, &influence));
             }
         }
+    }
+}
+
+#[test]
+fn weighted_strokes_keep_mixed_arms_crossings_and_single_cell_width() {
+    for directions in 1..=15 {
+        for affected_directions in 0..=15 {
+            if affected_directions & !directions != 0 {
+                continue;
+            }
+            let stroke = Stroke {
+                directions,
+                affected_directions,
+                same_source: true,
+                same_target: true,
+                ..Stroke::default()
+            };
+            assert_ne!(stroke.symbol(), " ");
+            assert_eq!(Span::raw(stroke.symbol()).width(), 1);
+        }
+    }
+    for (directions, affected_directions, expected) in [
+        (10, 10, "━"),
+        (5, 5, "┃"),
+        (14, 10, "┯"),
+        (14, 12, "┱"),
+        (15, 10, "┿"),
+        (6, 2, "┍"),
+        (10, 2, "╼"),
+        (5, 4, "╽"),
+    ] {
+        let stroke = Stroke {
+            directions,
+            affected_directions,
+            same_source: true,
+            same_target: true,
+            ..Stroke::default()
+        };
+        assert_eq!(stroke.symbol(), expected);
+        let crossing = Stroke {
+            same_source: false,
+            same_target: false,
+            ..stroke
+        };
+        assert_eq!(crossing.symbol(), "╳");
     }
 }

@@ -166,8 +166,8 @@ or use `g` for full Current Graph. `g` retains the Recent toggle. A chosen Searc
 result can temporarily bypass filters; moving to another task or applying filters
 ends that reveal. No-match Search stays open until you edit the query or cancel.
 
-Graph selection uses reverse video; bold nodes and lines show pending downstream
-influence. It follows dependency links through nonclosed work and stops before
+Graph selection uses reverse video; double-bordered nodes and heavy lines with
+solid arrowheads show pending downstream influence. It follows dependency links through nonclosed work and stops before
 every closed downstream task. Selecting done or bypassed work has no influence;
 selecting a cancelled prerequisite may still affect pending dependents because
 cancellation does not satisfy it. Highlighted tasks can remain blocked by other
