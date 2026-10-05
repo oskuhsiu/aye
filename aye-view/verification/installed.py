@@ -601,7 +601,20 @@ def influence_case(base, binary, audit, remote):
                     check_nodes(selected, set(highlighted))
                     unchanged(before, repo, linked)
 
-                writer('close-intermediate', 'InfC', 'close', ids['InfB'],
+                # B must be ready to close. One publication temporarily
+                # satisfies its prerequisites and restores both open parents;
+                # the viewer can observe only the final closed-B cutoff.
+                close_request = repo.parent / 'close-intermediate.json'
+                close_request.write_text(json.dumps({
+                    'version': 1,
+                    'operations': [
+                        {'op': op, 'id': ids[title]}
+                        for op, title in [('close', 'InfA'), ('close', 'InfD'),
+                                          ('close', 'InfB'), ('reopen', 'InfA'),
+                                          ('reopen', 'InfD')]
+                    ],
+                }) + '\n')
+                writer('close-intermediate', 'InfC', 'apply', '--file', str(close_request),
                        highlighted={'InfAlt', 'InfJoin'})
                 writer('reopen-intermediate', 'InfC', 'reopen', ids['InfB'],
                        highlighted=affected)
