@@ -167,9 +167,12 @@ result can temporarily bypass filters; moving to another task or applying filter
 ends that reveal. No-match Search stays open until you edit the query or cancel.
 
 Graph selection uses reverse video; double-bordered nodes and heavy lines with
-solid arrowheads show pending downstream influence. It follows dependency links through nonclosed work and stops before
-every closed downstream task. Selecting done or bypassed work has no influence;
-selecting a cancelled prerequisite may still affect pending dependents because
+solid arrowheads show unresolved upstream blockers and pending downstream influence.
+Upstream follows unresolved prerequisite chains, stopping before done/bypassed
+prerequisites. Cancelled prerequisites remain highlighted blockers, but traversal
+stops at them. Closed selections have no upstream blockers. Downstream follows
+nonclosed work and stops before every closed target. Selecting done or bypassed
+work has no influence; selecting a cancelled prerequisite may still affect pending dependents because
 cancellation does not satisfy it. Highlighted tasks can remain blocked by other
 prerequisites or manual blockers. Status colors and source-path hues stay intact,
 and the emphasis works with NO_COLOR.

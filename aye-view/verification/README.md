@@ -35,7 +35,8 @@ scrolling, background Graph drag/cancellation, independent list viewports,
 final matching History rows, passive SGR motion and capture cleanup,
 Detail drag highlight/copy, exact Unicode/newline clipboard requests and Ctrl+C
 copy/quit routing,
-pending downstream influence node/edge attributes in color and NO_COLOR,
+upstream blocker and pending downstream influence node/edge attributes in color
+and NO_COLOR,
 closed/cancelled/bypassed roots and cutoffs, alternate paths, hidden intermediaries
 and live lifecycle updates,
 normal/Ctrl-c/error exits, live linked-worktree

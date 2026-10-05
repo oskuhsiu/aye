@@ -91,6 +91,16 @@ fn assert_nodes(app: &App, frame: &Buffer, affected: &[usize]) {
         let cell = &frame[point(app, node.x, node.y)];
         let chosen = app.selected_id.as_deref() == Some(node.id.as_str());
         assert_eq!(
+            cell.symbol(),
+            if !chosen && affected.iter().any(|&n| node.id == id(n)) {
+                "╔"
+            } else {
+                "┌"
+            },
+            "{} border",
+            node.id
+        );
+        assert_eq!(
             cell.modifier.contains(Modifier::REVERSED),
             chosen,
             "{} selection",
@@ -145,11 +155,20 @@ fn influence_input_render_transitive_fanin_and_context() {
     let mut app = fixture();
     let before = app.snapshot.state.clone();
     let frame = render(&mut app, 500, 120);
-    assert_nodes(&app, &frame, &[1, 2, 10, 11, 12, 13]);
+    assert_nodes(&app, &frame, &[16, 1, 2, 10, 11, 12, 13]);
     assert_edges(
         &app,
         &frame,
-        &[(0, 1), (1, 2), (0, 10), (1, 11), (10, 11), (2, 12), (2, 13)],
+        &[
+            (16, 0),
+            (0, 1),
+            (1, 2),
+            (0, 10),
+            (1, 11),
+            (10, 11),
+            (2, 12),
+            (2, 13),
+        ],
     );
     assert_eq!(app.snapshot.state.project, before.project);
     assert_eq!(app.snapshot.state.tasks, before.tasks);
@@ -177,8 +196,12 @@ fn influence_input_render_transitive_fanin_and_context() {
     key(&mut app, KeyCode::Right);
     assert_eq!(app.selected_id, Some(id(1)));
     let frame = render(&mut app, 500, 120);
-    assert_nodes(&app, &frame, &[2, 11, 12, 13]);
-    assert_edges(&app, &frame, &[(1, 2), (1, 11), (2, 12), (2, 13)]);
+    assert_nodes(&app, &frame, &[16, 0, 3, 2, 11, 12, 13]);
+    assert_edges(
+        &app,
+        &frame,
+        &[(16, 0), (0, 1), (3, 1), (1, 2), (1, 11), (2, 12), (2, 13)],
+    );
     assert_eq!(app.graph, layout);
     click(&mut app, find(&frame, "NODE03"));
     assert_eq!(app.selected_id, Some(id(3)));
@@ -210,8 +233,8 @@ fn influence_closed_roots_cutoffs_and_alternate_paths_refresh() {
         });
         let frame = render(&mut app, 500, 120);
         assert_eq!(app.selected_id, Some(id(0)));
-        assert_nodes(&app, &frame, &[10, 11]);
-        assert_edges(&app, &frame, &[(0, 10), (10, 11)]);
+        assert_nodes(&app, &frame, &[16, 10, 11]);
+        assert_edges(&app, &frame, &[(16, 0), (0, 10), (10, 11)]);
         app.select(&id(1));
         let frame = render(&mut app, 500, 120);
         if resolution == "cancelled" {
@@ -274,7 +297,8 @@ fn influence_filter_focus_hidden_intermediary_does_not_change_scope() {
     let frame = render(&mut app, 200, 30);
     assert_eq!(app.focus_root, Some(id(0)));
     assert_eq!(app.selected_id, Some(id(2)));
-    assert_nodes(&app, &frame, &[]);
+    assert_nodes(&app, &frame, &[0]);
+    assert!(app.graph.edges.is_empty());
 }
 #[test]
 fn influence_pan_zoom_resize_and_removed_empty_selection() {
@@ -365,4 +389,117 @@ fn influence_snapshot_reopen_and_missing_selected_clear_stale_routes() {
     let frame = render(&mut app, 200, 30);
     assert_nodes(&app, &frame, &[]);
     assert_edges(&app, &frame, &[]);
+}
+
+#[test]
+fn influence_upstream_blockers_keep_siblings_and_cross_direction_shortcuts_ordinary() {
+    for density in [Density::Standard, Density::Compact] {
+        let mut app = fixture();
+        let mut state = app.snapshot.state.clone();
+        state.tasks.get_mut(&id(12)).unwrap().depends_on.push(id(0));
+        state.validate().unwrap();
+        app.replace_snapshot(ReaderSnapshot {
+            oid: "shortcut".into(),
+            state,
+        });
+        app.set_density(density);
+        let original = app.snapshot.state.clone();
+        let frame = render(&mut app, 500, 120);
+        let layout = app.graph.clone();
+        click(&mut app, find(&frame, "NODE11"));
+        let frame = render(&mut app, 500, 120);
+        assert_nodes(&app, &frame, &[0, 1, 3, 10, 16]);
+        assert_edges(
+            &app,
+            &frame,
+            &[(16, 0), (0, 1), (3, 1), (0, 10), (1, 11), (10, 11)],
+        );
+        click(&mut app, find(&frame, "NODE01"));
+        let frame = render(&mut app, 500, 120);
+        assert_nodes(&app, &frame, &[0, 3, 16, 2, 11, 12, 13]);
+        // Both endpoints of 0 -> 12 are highlighted, but that edge belongs
+        // to neither the selected task's upstream nor downstream traversal.
+        assert_edges(
+            &app,
+            &frame,
+            &[(16, 0), (0, 1), (3, 1), (1, 2), (1, 11), (2, 12), (2, 13)],
+        );
+        assert_eq!(app.graph, layout);
+        assert_eq!(app.snapshot.state.tasks, original.tasks);
+        assert_eq!(app.snapshot.state.project, original.project);
+    }
+}
+
+#[test]
+fn influence_upstream_done_bypass_and_cancelled_endpoints_stop_traversal() {
+    for density in [Density::Standard, Density::Compact] {
+        let mut app = fixture();
+        let mut state = app.snapshot.state.clone();
+        state.tasks.get_mut(&id(9)).unwrap().depends_on.push(id(10));
+        state.validate().unwrap();
+        app.replace_snapshot(ReaderSnapshot {
+            oid: "cancelled-alternate".into(),
+            state,
+        });
+        app.set_density(density);
+        app.select(&id(9));
+        let frame = render(&mut app, 500, 120);
+        assert_nodes(&app, &frame, &[0, 8, 10, 16]);
+        // 0 is unresolved through 10, but 0 -> closed(cancelled) 8 is
+        // still ordinary: a cancelled blocker is an upstream endpoint.
+        assert_edges(&app, &frame, &[(16, 0), (0, 10), (10, 9), (8, 9)]);
+        for root in [5, 7] {
+            app.select(&id(root));
+            let frame = render(&mut app, 500, 120);
+            assert_nodes(&app, &frame, &[]);
+            assert_edges(&app, &frame, &[]);
+        }
+        app.select(&id(8));
+        let frame = render(&mut app, 500, 120);
+        assert_nodes(&app, &frame, &[9]);
+        assert_edges(&app, &frame, &[(8, 9)]);
+    }
+}
+
+#[test]
+fn influence_upstream_snapshot_updates_clear_and_restore_blockers() {
+    let mut app = fixture();
+    app.select(&id(2));
+    let original = app.snapshot.state.clone();
+    let frame = render(&mut app, 500, 120);
+    assert_nodes(&app, &frame, &[0, 1, 3, 16, 12, 13]);
+    for (resolution, bypass) in [("done", false), ("cancelled", false), ("done", true)] {
+        let mut state = original.clone();
+        let task = state.tasks.get_mut(&id(1)).unwrap();
+        task.status = "closed".into();
+        task.resolution = Some(resolution.into());
+        task.closed_at = Some(NOW.into());
+        if bypass {
+            task.labels.push(aye::BYPASSED_LABEL.into());
+        }
+        state.validate().unwrap();
+        app.apply_update(crate::watch::Update::Snapshot(ReaderSnapshot {
+            oid: format!("upstream-{resolution}-{bypass}"),
+            state,
+        }));
+        let frame = render(&mut app, 500, 120);
+        if resolution == "cancelled" {
+            assert_nodes(&app, &frame, &[1, 12, 13]);
+            assert_edges(&app, &frame, &[(1, 2), (2, 12), (2, 13)]);
+        } else {
+            assert_nodes(&app, &frame, &[12, 13]);
+            assert_edges(&app, &frame, &[(2, 12), (2, 13)]);
+        }
+        app.apply_update(crate::watch::Update::Snapshot(ReaderSnapshot {
+            oid: "upstream-reopen".into(),
+            state: original.clone(),
+        }));
+        let frame = render(&mut app, 500, 120);
+        assert_nodes(&app, &frame, &[0, 1, 3, 16, 12, 13]);
+        assert_edges(
+            &app,
+            &frame,
+            &[(16, 0), (0, 1), (3, 1), (1, 2), (2, 12), (2, 13)],
+        );
+    }
 }

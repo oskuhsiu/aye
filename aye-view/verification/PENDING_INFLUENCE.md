@@ -1,10 +1,22 @@
+# Upstream blockers (2026-10-05)
+
+Nonclosed selections also highlight direct and transitive unresolved prerequisites
+and their dependency edges. Done/bypassed prerequisites stop before their node
+and edge. Cancelled prerequisites are unsatisfied blockers and are highlighted
+as terminal endpoints; their own prerequisites are not traversed. Closed
+selections have no upstream blockers. Upstream and downstream traversals remain
+independent, with explicit eligible edges: ancestor siblings and cross-direction
+shortcuts do not gain emphasis merely because their endpoints are highlighted.
+Hidden upstream intermediaries preserve influence without synthesized edges.
+Selection, snapshot, geometry, colors and read-only boundaries are unchanged.
+
 # Stronger glyph emphasis (2026-10-05)
 
 Affected unselected nodes use double borders, paths use heavy/mixed-weight glyphs
 and affected arrowheads use ▶. Selection retains reverse video. Directional
 weight preserves unrelated light arms at shared junctions; nonjoining ╳ and
-status/source foregrounds remain unchanged. Geometry and influence rules remain
-those documented below. BOLD is secondary; shape carries the distinction.
+status/source foregrounds remain unchanged. Geometry remains unchanged; upstream
+extends the historical downstream-only rules documented below. BOLD is secondary; shape carries the distinction.
 
 # Pending downstream influence
 

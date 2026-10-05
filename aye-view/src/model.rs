@@ -37,12 +37,13 @@ impl Relations {
         relations
     }
 }
-/// Session-local selection and pending downstream dependency influence.
+/// Session-local selection, unresolved upstream blockers and pending descendants.
 /// Derived from canonical tasks, independently of the visible graph scope.
 #[derive(Default)]
 pub struct PendingInfluence<'a> {
     pub selected: Option<&'a str>,
     pub affected: BTreeSet<&'a str>,
+    edges: BTreeSet<(&'a str, &'a str)>,
 }
 impl<'a> PendingInfluence<'a> {
     pub fn new(state: &'a State, relations: &Relations, selected: Option<&'a str>) -> Self {
@@ -61,19 +62,40 @@ impl<'a> PendingInfluence<'a> {
         let mut pending = vec![root.id.as_str()];
         while let Some(id) = pending.pop() {
             if let Some(dependents) = relations.blocks.get(id) {
-                for id in dependents {
-                    let task = &state.tasks[id];
-                    if task.status != "closed" && influence.affected.insert(task.id.as_str()) {
+                for dependent in dependents {
+                    let task = &state.tasks[dependent];
+                    if task.status != "closed" {
+                        influence.edges.insert((id, task.id.as_str()));
+                        if influence.affected.insert(task.id.as_str()) {
+                            pending.push(task.id.as_str());
+                        }
+                    }
+                }
+            }
+        }
+        // Walk blockers independently: ancestors' other dependents must not
+        // become selected-task influence. Closed selections have no blockers.
+        if root.status != "closed" {
+            pending.push(root.id.as_str());
+            while let Some(id) = pending.pop() {
+                for prerequisite in &state.tasks[id].depends_on {
+                    let task = &state.tasks[prerequisite];
+                    if task.status == "closed" && task.resolution.as_deref() == Some("done") {
+                        continue;
+                    }
+                    influence.edges.insert((task.id.as_str(), id));
+                    if influence.affected.insert(task.id.as_str()) && task.status != "closed" {
                         pending.push(task.id.as_str());
                     }
+                    // Cancelled prerequisites remain blockers, but their own
+                    // prerequisites cannot currently block a closed task.
                 }
             }
         }
         influence
     }
     pub fn includes_edge(&self, prerequisite: &str, dependent: &str) -> bool {
-        self.affected.contains(dependent)
-            && (self.selected == Some(prerequisite) || self.affected.contains(prerequisite))
+        self.edges.contains(&(prerequisite, dependent))
     }
 }
 /// All non-closed tasks and their prerequisite ancestors, in stable list order.

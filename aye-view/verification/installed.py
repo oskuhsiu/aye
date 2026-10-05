@@ -549,8 +549,28 @@ def influence_case(base, binary, audit, remote):
             else:
                 assert all(fg == 'default' for _, fg in footprint.values())
             session.key('right-select-B', b'\x1b[C', lambda _: styled('InfB', True, True))
-            check_nodes('InfB', {'InfC'})
+            check_nodes('InfB', {'InfA', 'InfD', 'InfC'})
+            for title in ('InfA', 'InfD', 'InfB'):
+                check_port(title, True)
             assert edges() == footprint, 'Selection changed edge glyphs or hues'
+            for selected, blockers in [
+                    ('InfC', {'InfA', 'InfD', 'InfB'}),
+                    ('InfCanTail', {'InfCancel'}),
+                    ('InfDoneTail', set()), ('InfBypTail', set()),
+                    ('InfJoin', {'InfA', 'InfAlt'})]:
+                col, row, _, _ = node(selected)
+                session.mouse_click('upstream-' + selected, col, row,
+                                    lambda _, title=selected: styled(title, True, True))
+                check_nodes(selected, blockers)
+                assert edges() == footprint
+                if selected == 'InfCanTail':
+                    check_port('InfCancel', True)
+                    check_port('InfCancel', False, incoming=True)
+                    check_port('InfA', False)
+            # Restore B so the existing left-navigation assertion stays exact.
+            col, row, _, _ = node('InfB')
+            session.mouse_click('upstream-back-B', col, row,
+                                lambda _: styled('InfB', True, True))
             session.key('left-select-A', b'\x1b[D', lambda _: styled('InfA', True, True))
             check_nodes('InfA', affected)
             assert edges() == footprint
@@ -570,6 +590,13 @@ def influence_case(base, binary, audit, remote):
                             and styled('InfC', True))
                 check_nodes('InfA', affected)
                 check_port('InfD', False)
+                col, row, _, _ = node('InfC')
+                session.mouse_click('compact-upstream-C', col, row,
+                                    lambda _: styled('InfC', True, True))
+                check_nodes('InfC', {'InfA', 'InfD', 'InfB'})
+                col, row, _, _ = node('InfA')
+                session.mouse_click('compact-back-A', col, row,
+                                    lambda _: styled('InfA', True, True))
                 session.resize(220, 55)
                 session.wait('resize-compact', lambda _: styled('InfA', True, True)
                              and styled('InfC', True))
@@ -592,6 +619,16 @@ def influence_case(base, binary, audit, remote):
                 for title in ('InfA', 'InfC'):
                     _, row, left, width = node(title)
                     assert session.screen.buffer[row][left + width].data == ' '
+                col, row, _, _ = node('InfC')
+                session.mouse_click('hidden-upstream-C', col, row,
+                                    lambda _: styled('InfC', True, True))
+                check_nodes('InfC', {'InfA'}, ['InfA', 'InfC'])
+                for title in ('InfA', 'InfC'):
+                    _, row, left, width = node(title)
+                    assert session.screen.buffer[row][left + width].data == ' '
+                col, row, _, _ = node('InfA')
+                session.mouse_click('hidden-back-A', col, row,
+                                    lambda _: styled('InfA', True, True))
                 session.key('current', b'g', contains('Graph · 12 visible tasks'))
                 check_nodes('InfA', affected)
                 unchanged(before, repo, linked)
@@ -632,6 +669,21 @@ def influence_case(base, binary, audit, remote):
                                for x in range(left + 1, left + 8)) == 'blocked'
                 writer('reopen-bypassed-root', 'InfB', 'reopen', ids['InfA'],
                        highlighted=affected)
+                col, row, _, _ = node('InfC')
+                session.mouse_click('live-upstream-C', col, row,
+                                    lambda _: styled('InfC', True, True))
+                check_nodes('InfC', {'InfA', 'InfD', 'InfB'})
+                writer('upstream-close-A', 'InfA', 'close', ids['InfA'],
+                       selected='InfC', highlighted={'InfD', 'InfB'})
+                writer('upstream-reopen-A', 'InfA', 'reopen', ids['InfA'],
+                       selected='InfC', highlighted={'InfA', 'InfD', 'InfB'})
+                writer('upstream-close-B', 'InfB', 'apply', '--file', str(close_request),
+                       selected='InfC')
+                writer('upstream-reopen-B', 'InfB', 'reopen', ids['InfB'],
+                       selected='InfC', highlighted={'InfA', 'InfD', 'InfB'})
+                col, row, _, _ = node('InfA')
+                session.mouse_click('live-upstream-back-A', col, row,
+                                    lambda _: styled('InfA', True, True))
             check_nodes('InfA', affected)
             unchanged(before, repo, linked)
             reports[name] = session.finish()
