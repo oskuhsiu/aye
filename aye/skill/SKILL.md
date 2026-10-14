@@ -13,9 +13,10 @@ no handler, runtime role or model-routing configuration is required.
 
 ## Read what the operation needs
 
-- **Starting, pausing, deferring or completing task work:** read
-  [Common workflow](refs/common.md) first. It distinguishes ordinary pauses from
-  explicit shelving and covers acquisition, atomic batches and acceptance.
+- **Command syntax, actor setup, starting, pausing, deferring or completing
+  task work:** read [Common workflow](refs/common.md) first. It distinguishes
+  ordinary pauses from explicit shelving and covers acquisition, atomic batches
+  and acceptance.
 - **Waiving unavailable verification after implementation is complete:** read
   [Explicit verification bypass](refs/bypass.md). An explicit user instruction to
   bypass is the authorization to execute it; do not ask for a duplicate

@@ -15,16 +15,38 @@ aye --json init --offline   # deliberately create local state without network
 
 Online init joins an existing remote project. Offline init can create a separate
 project and later cause `PROJECT_MISMATCH`. Setup, sync and reads need no actor.
-Set a distinct process identity once for each independent agent:
+Choose a distinct identity for each independent agent. In a persistent shell,
+set it once for that shell and its descendants:
 
 ```sh
 export AYE_ACTOR=agent-a
 ```
 
+For tool calls that start separate shells, pass `--actor agent-a` on each
+mutation, or supply `AYE_ACTOR=agent-a` in every call's environment. An export
+in an earlier tool call does not configure later shells. The examples below
+assume identity is supplied through one of these methods.
+
 Precedence is `--actor`, `AYE_ACTOR`, then the worktree-local actor file set by
 `aye config actor agent-a`. Preserve a shared checkout's default; use process
 identity or `--actor`. Keep the same identity throughout a claim. Executing agents
 call aye directly; no handler or runtime role/model routing is needed.
+
+Commands are top-level: `aye [--json] [--actor ACTOR] COMMAND ...`.
+`create`, `list`, `show`, `claim`, `note` and `apply` are direct command names.
+For common writes, with identity supplied:
+
+```sh
+aye --json create "TITLE"
+aye --json note TASK_ID "Evidence"
+aye --json note TASK_ID --file evidence.md
+aye --json apply --file request.json
+```
+
+The create title and note body are positional. For notes, `--file PATH` reads a
+real UTF-8 file. `apply --file -` reads stdin; for `note`, `--file -` names a file
+called `-`. Batch operation fields are defined in
+[Atomic batch reference](batches.md).
 
 Linked worktrees share changes immediately. For independent clones, use
 `aye --json sync` at session start/handoff only when remote task publication is
@@ -122,8 +144,7 @@ consult [Atomic batch reference](batches.md) when constructing those requests.
 ## Progress, pauses and completion
 
 Record actual decisions, checks and remaining work. Notes append; correct earlier
-facts with a new note. For one longer note, `aye --json note TASK_ID --file evidence.md`
-remains available.
+facts with a new note. Use the note forms above for inline or file evidence.
 
 Choose the transition from the intended next-session availability:
 

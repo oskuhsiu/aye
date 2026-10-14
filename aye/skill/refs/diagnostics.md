@@ -22,6 +22,7 @@ nothing about whether a task's software acceptance has been tested.
 | --- | --- |
 | `NOT_INITIALIZED` | Follow the setup choice in [Common workflow](common.md) |
 | `ACTOR_REQUIRED` | Supply your actor through `--actor`, `AYE_ACTOR`, or this worktree's actor config |
+| `GIT_ERROR` / `IO_ERROR` with `Permission denied` or `Operation not permitted` | Verify the repository and denied path, then use the host's approved access mechanism for the same authorized operation. Preserve task state and keep actor, lifecycle and publication scope unchanged. |
 | `TASK_NOT_FOUND` / `AMBIGUOUS_TASK_ID` | Inspect `list --all`; use the returned full ID |
 | `TASK_ALREADY_CLAIMED` / `NOT_CLAIM_OWNER` | Inspect the claim; choose other assigned work or coordinate ownership |
 | `TASK_NOT_READY` / `INVALID_STATE_TRANSITION` | Inspect status, manual block and prerequisites; use the appropriate [lifecycle command](tasks-and-states.md) |
